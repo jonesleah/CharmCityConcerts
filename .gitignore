@@ -1,0 +1,4 @@
+nodemodules/
+package-lock.json
+tempDir/*
+*.sql
