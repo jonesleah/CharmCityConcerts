@@ -60,4 +60,5 @@ async function getEvents () {
 	return events;
 }
 
+getEvents();
 module.exports = { getEvents };

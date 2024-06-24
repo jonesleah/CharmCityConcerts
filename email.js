@@ -1,5 +1,7 @@
 const nodeMailer = require('nodemailer');
 const { getEvents } = require('./scraper');
+const cron = require('node-cron')
+require('dotenv').config();
 
 function formatEmail(events) {
     if (!events || !Array.isArray(events) || events.length === 0) {
@@ -35,7 +37,7 @@ async function sendEmail() {
         secure: true,
         auth: {
             user: 'leahjones1403@gmail.com',
-            pass: 'ivqx pcnk jtif rghb'
+            pass: process.env.SMTP_PASSWORD
         }
     });
 
@@ -49,4 +51,6 @@ async function sendEmail() {
     console.log("Message sent: " + info.messageId);
 }
 
-sendEmail().catch(e => console.log(e));
+cron.schedule('0 9 1 * *', async () => {
+    await sendEmail().catch(e => console.log(e));;
+})
