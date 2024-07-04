@@ -1,21 +1,31 @@
 {
   "name": "webscraper",
   "version": "1.0.0",
-  "description": "Ticketmaster concert scraper",
-  "main": "index.js",
+  "description": "Ticketmaster Concert Scraper",
+  "main": "server.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node index.js"
+    "start": "node server.js",
+    "dev": "nodemon server.js"
   },
   "author": "Leah Jones",
   "license": "ISC",
   "dependencies": {
+    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "mongodb": "^6.8.0",
+    "mongoose": "^8.4.4",
+    "mongoose-sequence": "^6.0.1",
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.14",
     "pg": "^8.12.0",
     "puppeteer": "^22.12.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
   }
+
 }
