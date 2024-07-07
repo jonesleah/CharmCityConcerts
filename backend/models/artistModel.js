@@ -1,4 +1,11 @@
-import mongoose from 'mongoose';
+import mongoose from 'mongoose'
+
+const concertSchema = new mongoose.Schema({
+    title: String,
+    date: Date,
+    location: String,
+    ticketPrice: Number
+})
 
 const artistSchema = new mongoose.Schema({
     name: { 
@@ -6,13 +13,9 @@ const artistSchema = new mongoose.Schema({
         required: true,
         unique: true,
         trim: true,
-        default: "Taylor Swift"
     },
-    concerts: [{ 
-        type: mongoose.Schema.Types.ObjectId, 
-        ref: 'concert' 
-    }]
-});
+    concerts: [concertSchema]
+}, {timestamps: true})
 
-const artist = mongoose.model('artist', artistSchema);
-export default artist;
+const Artist = mongoose.model('Artist', artistSchema);
+export default Artist;

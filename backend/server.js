@@ -3,8 +3,7 @@ import cors from "cors"
 import mongoose from "mongoose"
 import dotenv from "dotenv"
 import path from "path"
-import { readdirSync } from "fs"
-import router from "./routes/artistRoutes.js"
+import artistRoutes from "./routes/artistRoutes.js"
 
 dotenv.config()
 
@@ -13,15 +12,9 @@ const PORT = process.env.PORT || 3500
 
 app.use(cors())
 app.use(express.json())
-//app.use(express.static(path.join(__dirname, 'frontend', 'public')))
 
-
-// Load and apply all routes
-const routes = readdirSync('./routes')
-routes.forEach(async (route) => {
-    const routeModule = await import(`./routes/${route}`);
-    app.use('/api/v1', routeModule.default);
-})
+// Load and apply API route
+app.use('/api', artistRoutes)
 
 const db = async() => {
     try {

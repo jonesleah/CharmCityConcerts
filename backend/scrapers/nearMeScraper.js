@@ -1,7 +1,6 @@
-import { use, launch } from 'puppeteer-extra'
+import pkg from 'puppeteer-extra';
+const { use, launch } = pkg;
 import StealthPlugin from 'puppeteer-extra-plugin-stealth'
-import artist from './models/artistModel.js'
-import concert from './models/concertModel.js'
 use(StealthPlugin())
 
 // Scrape all popular concerts near me for the following month
@@ -62,9 +61,5 @@ async function getEvents() {
 	return events
 }
 
-// Scrape concerts of tracked artists
-async function scrapeTrackedArtists() {
-	const trackedArtists = await artist.find()
-}
-getEvents()
+//getEvents()
 export default { getEvents }
