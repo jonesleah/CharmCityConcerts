@@ -1,8 +1,6 @@
-import pkg from 'puppeteer-extra';
-const { use, launch } = pkg;
+import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth'
-use(StealthPlugin())
-
+puppeteer.use(StealthPlugin())
 // Scrape all popular concerts near me for the following month
 function getDateRange() {
     const currentDate = new Date()
@@ -21,14 +19,13 @@ function formatDate(date) {
 }
 
 async function getEvents() {
-	const browser = await launch({
+	const browser = await puppeteer.launch({
 		headless: false,
 		defaultViewport: null,
 		userDataDir: "./tempDir"
 	});
 
-	const { firstDay, lastDay } = getDateRange()
-	const url = `https://www.ticketmaster.com/discover/concerts/baltimore?sort=relevance%2Cdesc&daterange=from${firstDay}-${lastDay}`
+	const url = `https://www.ticketmaster.com/discover/concerts/baltimore?sort=relevance%2Cdesc&`
 	console.log(url)
 	const page = await browser.newPage()
 	await page.goto(url)

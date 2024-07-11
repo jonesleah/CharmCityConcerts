@@ -1,10 +1,13 @@
 import mongoose from 'mongoose'
 
 const concertSchema = new mongoose.Schema({
-    title: String,
-    date: Date,
+    month: String,
+    day: String,
+    time: String,
     location: String,
-    ticketPrice: Number
+    venue: String,
+    title: String,
+    ticketsLink: String
 })
 
 const artistSchema = new mongoose.Schema({
