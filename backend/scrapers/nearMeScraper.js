@@ -58,5 +58,4 @@ async function getEvents() {
 	return events
 }
 
-//getEvents()
 export default { getEvents }

@@ -1,7 +1,8 @@
 import express from 'express'
-import {addArtist, getArtistData} from '../controllers/artistController.js'
+import {addArtist, getArtistData, updateConcerts} from '../controllers/artistController.js'
 const router = express.Router()
 
 router.post('/add-artist', addArtist)
-router.post('/get-artists', getArtistData)
+    .get('/get-artists', getArtistData)
+    .put('/update-concerts', updateConcerts)
 export default router

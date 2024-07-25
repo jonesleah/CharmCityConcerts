@@ -1,23 +1,26 @@
 import ArtistCard from './components/ArtistCard'
 import './App.css'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import axios from 'axios'
 
-const ArtistForm = () => {
+// Form to add a new tracked artist
+const ArtistForm = ({ addArtist }) => {
   const [name, setName] = useState('')
 
   async function handleSubmit(e) {
     e.preventDefault()
     try {
-      const response = await axios.post('/api/add-artist', { name })
-      console.log('Name added:', response.data)
+      const newArtist = await axios.post('/api/add-artist', { name })
+      console.log('Name added:', newArtist.data)
       setName('')
+      const addConcerts = await axios.post('api/update-concerts', { name } )
+      console.log('Concerts added: ', addConcerts.data)
+      addArtist(addConcerts.data.artist)
     }
     catch (err) {
       console.log(err)
     }
   }
-
   return (
     <div className="form">
       <h2>
@@ -39,6 +42,7 @@ const ArtistForm = () => {
   )
 }
 
+// Main App
 const App = () => {
   const [artists, setArtists] = useState([])
 
@@ -46,25 +50,34 @@ const App = () => {
     const getArtists = async () => {
       try {
         const response = await axios.get('/api/get-artists')
-      }
-      catch (err) {
+        setArtists(response.data.artists);
+      } catch (err) {
         console.log('Error getting tracked artists concerts:', err)
       }
-    }
-  })
+    };
+    getArtists();
+  }, []); 
+
+  // 
+  const addArtist = (newArtist) => {
+    setArtists((prevArtists) => [...prevArtists, newArtist])
+  }
+
   return (
     <div className="App">
       <h1 className="App-title">CharmCityConcerts</h1>
-      <ArtistForm />
+      <ArtistForm addArtist={addArtist} />
+      <h2>Tracked Artists:</h2>
       <div className="tracked-artists">
-        <h2>Tracked Artists:</h2>
-        {artists.map (artist => (
-          <ArtistCard key={artist._id} artist={artist.name} />
+        {artists.map((artist) => (
+          <ArtistCard
+            key={artist._id}
+            artist={artist}
+          />
         ))}
       </div>
     </div>
-
   );
-}
+};
 
-export default App
+export default App;

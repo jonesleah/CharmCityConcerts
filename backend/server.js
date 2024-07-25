@@ -6,14 +6,14 @@ import path from "path"
 import artistRoutes from "./routes/artistRoutes.js"
 
 dotenv.config()
-
+mongoose.set('debug', true)
 const app = express()
 const PORT = process.env.PORT || 3500
 
 app.use(cors())
 app.use(express.json())
 
-// Load and apply API route
+// Load and apply API routes
 app.use('/api', artistRoutes)
 
 const db = async() => {

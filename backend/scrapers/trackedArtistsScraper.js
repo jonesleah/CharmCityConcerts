@@ -2,22 +2,9 @@ import puppeteer from 'puppeteer-extra'
 import StealthPlugin from 'puppeteer-extra-plugin-stealth'
 puppeteer.use(StealthPlugin())
 import Artist from '../models/artistModel.js'
+import mongoose from 'mongoose';
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-
-// Get all of the user's tracked artists from the db
-async function getArtists() {
-    try {
-        const artists = await Artist.find()
-        console.log(artists)
-        return artists
-    }
-    catch (err) {
-        console.log('Error getting artists:', err)
-    }
-}
-
 
 // Scrape concerts of a specified tracked artist
 async function scrapeTrackedArtist(artistName) {
@@ -37,9 +24,7 @@ async function scrapeTrackedArtist(artistName) {
             'document.querySelectorAll("div.MDVIb").length > 0',
             { timeout: 0 }
         );
-        console.log("reached")
         const events = await page.evaluate(() => {
-            console.log("reached2")
             let eventListings = document.querySelectorAll('div.MDVIb');
             console.log(`Found ${eventListings.length} event listings`);  // Debug log
 
@@ -51,17 +36,17 @@ async function scrapeTrackedArtist(artistName) {
                 let time = event.querySelector('span.sc-1idcr5x-1.dieHWG span')?.textContent
                 let title = event.querySelector('.sc-fyofxi-6 .sc-fyofxi-5')?.textContent
                 let locationElements = event.querySelectorAll('.sc-fyofxi-7 .sc-fyofxi-5')
-                let city = locationElements[0]?.textContent
+                let location = locationElements[0]?.textContent
                 let venue = locationElements[1]?.textContent
                 let ticketsLink = event.querySelector('div.sc-erggfp-0.ixLVeF a')?.href
                 if (day) {
                     events.push ({
-                        title,
                         month,
                         day,
                         time,
-                        city,
+                        location,
                         venue,
+                        title,
                         ticketsLink
                     })
                 }            
@@ -80,28 +65,6 @@ async function scrapeTrackedArtist(artistName) {
 }
 
 
-// Update artist's concerts in db
-async function updateDB(artistName, events) {
-    const artist = await Artist.findOne({ name: artistName })
-    if (artist) {
-        events.forEach(async event => {
-            artist.concerts.push ({
-                month: event.month,
-                day: event.day,
-                time: event.time,
-                location: event.location,
-                venue: event.venue,
-                title: event.title,
-                ticketsLink: event.ticketsLinks
-            })
-        })
-        await artist.save()
-        console.log(`${artistName}'s concerts added to db`)
-    }
-    else {
-        console.log(`Could not find ${artistName} in db`)
-    }
-}
 
 // // Scrape ALL tracked artists in db and update db contents
 // async function scrapeAllArtists() {
@@ -113,5 +76,5 @@ async function updateDB(artistName, events) {
 
 // }
 
-scrapeTrackedArtist("Taylor Swift")
+//const events = await scrapeTrackedArtist("Taylor Swift")
 export { scrapeTrackedArtist }

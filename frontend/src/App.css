@@ -1,4 +1,3 @@
-
 .App {
   display: flex;
   flex-direction: column;
@@ -19,11 +18,6 @@
   pointer-events: none;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
-}
 
 .App-header {
   background-color: #282c34;
@@ -47,7 +41,14 @@
   color: #61dafb;
 }
 
-/* ArtistCard styling */
+.tracked-artists {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 10px;
+}
+
+/* Artist card styling */
 .card {
   border: 1px solid #ddd;
   border-radius: 8px;
@@ -55,17 +56,19 @@
   padding: 16px;
   background-color: #fff;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  height: 40px;
+  width: 200px;
 }
+
 
 .card-body {
   padding-bottom: 16px;
+  cursor: pointer;
 }
 
 .card-title {
   font-size: 1.5rem;
   margin: 0;
-  padding-bottom: 8px;
-  border-bottom: 1px solid #ddd;
 }
 
 .concert-list {
@@ -79,6 +82,3 @@
   border-top: 1px solid #eee;
 }
 
-.concert-item:first-child {
-  border-top: none;
-}
