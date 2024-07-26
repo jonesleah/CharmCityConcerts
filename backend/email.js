@@ -1,6 +1,6 @@
-const nodeMailer = require('nodemailer');
-const { getEvents } = require('./scraper');
-const cron = require('node-cron')
+import { createTransport } from 'nodemailer';
+import { getEvents } from './scraper';
+import { schedule } from 'node-cron';
 require('dotenv').config();
 
 function formatEmail(events) {
@@ -31,7 +31,7 @@ function formatEmail(events) {
 async function sendEmail() {
     const events = await getEvents();
     const html = formatEmail(events)
-    const transporter = nodeMailer.createTransport ({
+    const transporter = createTransport ({
         host: 'smtp.gmail.com',
         port: 465,
         secure: true,
@@ -51,6 +51,6 @@ async function sendEmail() {
     console.log("Message sent: " + info.messageId);
 }
 
-cron.schedule('0 9 1 * *', async () => {
+schedule('0 9 1 * *', async () => {
     await sendEmail().catch(e => console.log(e));;
 })
