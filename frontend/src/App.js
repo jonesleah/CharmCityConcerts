@@ -10,10 +10,10 @@ const ArtistForm = ({ addArtist }) => {
   async function handleSubmit(e) {
     e.preventDefault()
     try {
-      const newArtist = await axios.post('/api/add-artist', { name })
+      const newArtist = await axios.post(`${process.env.REACT_APP_API_URL}/api/add-artist`, { name })
       console.log('Name added:', newArtist.data)
       setName('')
-      const addConcerts = await axios.post('api/update-concerts', { name } )
+      const addConcerts = await axios.post(`${process.env.REACT_APP_API_URL}api/update-concerts`, { name } )
       console.log('Concerts added: ', addConcerts.data)
       addArtist(addConcerts.data.artist)
     }
@@ -49,7 +49,7 @@ const App = () => {
   useEffect(() => {
     const getArtists = async () => {
       try {
-        const response = await axios.get('/api/get-artists')
+        const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/get-artists`)
         setArtists(response.data.artists);
       } catch (err) {
         console.log('Error getting tracked artists concerts:', err)
