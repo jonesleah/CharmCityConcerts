@@ -17,9 +17,8 @@ async function scrapeTrackedArtist(artistName) {
             "--single-process",
             "--no-zygote",
         ],
-		headless: true,
-		defaultViewport: null,
         executablePath: process.env.NODE_ENV === 'production' ? process.env.PUPPETEER_EXECUTABLE_PATH : puppeteer.executablePath(),
+        protocolTimeout: 120000
 	})
 
     try {
@@ -71,18 +70,6 @@ async function scrapeTrackedArtist(artistName) {
         await browser.close()
     }
 }
-
-
-
-// // Scrape ALL tracked artists in db and update db contents
-// async function scrapeAllArtists() {
-//     const artists = await getArtists()
-//     for (const artist of artists) {
-//         const events = await scrapeTrackedArtist(artist.name);
-//         await updateDB(artist.name, events);
-//     }
-
-// }
 
 //const events = await scrapeTrackedArtist("Taylor Swift")
 export { scrapeTrackedArtist }
