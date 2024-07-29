@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import axios from 'axios'
 
 // Form to add a new tracked artist
-const ArtistForm = ({ addArtist }) => {
+const ArtistForm = () => {
   const [name, setName] = useState('')
 
   async function handleSubmit(e) {
