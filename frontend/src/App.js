@@ -58,7 +58,7 @@ const App = () => {
   return (
     <div className="App">
       <h1 className="App-title">CharmCityConcerts</h1>
-      <ArtistForm addArtist={addArtist} />
+      <ArtistForm />
       <h2>Tracked Artists:</h2>
       <div className="tracked-artists">
         {artists.map((artist) => (
