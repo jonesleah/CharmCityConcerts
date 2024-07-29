@@ -11,7 +11,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 // Scrape concerts of a specified tracked artist
 async function scrapeTrackedArtist(artistName) {
     const browser = await puppeteer.launch ({
-        headless: false,
+        headless: true,
         args: [
             "--disable-setuid-sandbox",
             "--no-sandbox",
