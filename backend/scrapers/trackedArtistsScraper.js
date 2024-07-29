@@ -18,19 +18,22 @@ async function scrapeTrackedArtist(artistName) {
             "--no-zygote",
         ],
         executablePath: process.env.NODE_ENV === 'production' ? process.env.PUPPETEER_EXECUTABLE_PATH : puppeteer.executablePath(),
-        protocolTimeout: 120000
+        protocolTimeout: 300000
 	})
 
     try {
         let encodedName = encodeURIComponent(artistName)
+        console.log("Navigating to Ticketmaster general page")
         const url = `https://www.ticketmaster.com/search?q=${encodedName}`
         const page = await browser.newPage()
-        await page.goto(url)
+        await page.goto(url, {waitUntil: 'networkidle2', timeout: 300000})
+        console.log("Page loaded")
         await delay(5000)
         await page.waitForFunction(
             'document.querySelectorAll("div.MDVIb").length > 0',
             { timeout: 0 }
         );
+        console.log("Event listings found, scraping now")
         const events = await page.evaluate(() => {
             let eventListings = document.querySelectorAll('div.MDVIb');
             console.log(`Found ${eventListings.length} event listings`);  // Debug log
