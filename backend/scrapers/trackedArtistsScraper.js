@@ -11,6 +11,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 // Scrape concerts of a specified tracked artist
 async function scrapeTrackedArtist(artistName) {
     const browser = await puppeteer.launch ({
+        headless: false,
         args: [
             "--disable-setuid-sandbox",
             "--no-sandbox",
@@ -28,11 +29,13 @@ async function scrapeTrackedArtist(artistName) {
         const page = await browser.newPage()
         await page.goto(url, {waitUntil: 'networkidle2', timeout: 300000})
         console.log("Page loaded")
+        await page.screenshot({ path: 'screenshot1.png' });
+
         await delay(5000)
         await page.waitForFunction(
-            'document.querySelectorAll("div.MDVIb").length > 0',
-            { timeout: 0 }
-        );
+            'document.querySelectorAll("div.MDVIb").length > 0'
+        )
+        await page.screenshot({ path: 'screenshot2.png' })
         console.log("Event listings found, scraping now")
         const events = await page.evaluate(() => {
             let eventListings = document.querySelectorAll('div.MDVIb');
