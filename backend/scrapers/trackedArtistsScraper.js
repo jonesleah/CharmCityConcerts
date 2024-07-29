@@ -37,7 +37,7 @@ async function scrapeTrackedArtist(artistName) {
         await page.waitForFunction(
             'document.querySelectorAll("div.MDVIb").length > 0'
         )
-        await page.screenshot({ path: 'screenshot2.png' })
+        await page.screenshot({ path: '/tmp/screenshot2.png' })
         console.log("Event listings found, scraping now")
         const events = await page.evaluate(() => {
             let eventListings = document.querySelectorAll('div.MDVIb');
@@ -79,5 +79,5 @@ async function scrapeTrackedArtist(artistName) {
     }
 }
 
-const events = await scrapeTrackedArtist("Taylor Swift")
+//const events = await scrapeTrackedArtist("Taylor Swift")
 export { scrapeTrackedArtist }
