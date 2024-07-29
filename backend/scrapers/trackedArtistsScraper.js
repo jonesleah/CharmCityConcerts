@@ -29,7 +29,9 @@ async function scrapeTrackedArtist(artistName) {
         const page = await browser.newPage()
         await page.goto(url, {waitUntil: 'networkidle2', timeout: 300000})
         console.log("Page loaded")
-        await page.screenshot({ path: 'screenshot1.png' });
+        const pageContent = await page.content()
+        console.log(pageContent)
+        await page.screenshot({ path: '/tmp/screenshot1.png' });
 
         await delay(5000)
         await page.waitForFunction(
@@ -77,5 +79,5 @@ async function scrapeTrackedArtist(artistName) {
     }
 }
 
-//const events = await scrapeTrackedArtist("Taylor Swift")
+const events = await scrapeTrackedArtist("Taylor Swift")
 export { scrapeTrackedArtist }
