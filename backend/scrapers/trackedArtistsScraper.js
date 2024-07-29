@@ -3,15 +3,23 @@ import StealthPlugin from 'puppeteer-extra-plugin-stealth'
 puppeteer.use(StealthPlugin())
 import Artist from '../models/artistModel.js'
 import mongoose from 'mongoose';
+import dotenv from "dotenv"
+dotenv.config()
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // Scrape concerts of a specified tracked artist
 async function scrapeTrackedArtist(artistName) {
     const browser = await puppeteer.launch ({
-		headless: false,
+        args: [
+            "--disable-setuid-sandbox",
+            "--no-sandbox",
+            "--single-process",
+            "--no-zygote",
+        ],
+		headless: true,
 		defaultViewport: null,
-		userDataDir: "./tempDir"
+        executablePath: process.env.NODE_ENV === 'production' ? process.env.PUPPETEER_EXECUTABLE_PATH : puppeteer.executablePath(),
 	})
 
     try {
