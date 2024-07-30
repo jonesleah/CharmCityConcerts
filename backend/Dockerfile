@@ -15,4 +15,5 @@ RUN apt-get update && apt-get install -y \
   libnss3 \
   libasound2 \
   && rm -rf /var/lib/apt/lists/*
-  CMD ["xvfb-run", "--server-args='-screen 0 1024x768x24'", "node", "server.js"]
+  
+CMD ["xvfb-run", "--server-args='-screen 0 1024x768x24'", "node", "server.js"]
