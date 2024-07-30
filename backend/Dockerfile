@@ -1,5 +1,9 @@
 FROM ghcr.io/puppeteer/puppeteer:22.12.1
 
+# Ensure correct permissions
+USER root
+RUN chmod 755 /var/lib/apt/lists
+
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
@@ -10,14 +14,15 @@ RUN npm install
 
 COPY . .
 
-RUN apt-get update
-RUN apt-get install -y \
+# Clean and update package lists
+RUN rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y \
   xvfb \
   libgtk-3-0 \
   libx11-xcb1 \
   libnss3 \
-  libasound2
-RUN rm -rf /var/lib/apt/lists/*
+  libasound2 \
+  && rm -rf /var/lib/apt/lists/*
 
 EXPOSE 8080
 
