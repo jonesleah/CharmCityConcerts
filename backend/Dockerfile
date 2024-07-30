@@ -8,4 +8,11 @@ WORKDIR /usr/src/app
 COPY package*.json ./
 RUN npm install
 COPY . .
-CMD [ "xvfb-run", "--", "node", "server.js" ]
+RUN apt-get update && apt-get install -y \
+  xvfb \
+  libgtk-3-0 \
+  libx11-xcb1 \
+  libnss3 \
+  libasound2 \
+  && rm -rf /var/lib/apt/lists/*
+  CMD ["xvfb-run", "--server-args='-screen 0 1024x768x24'", "node", "server.js"]
