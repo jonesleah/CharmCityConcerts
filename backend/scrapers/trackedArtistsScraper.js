@@ -11,7 +11,6 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 // Scrape concerts of a specified tracked artist
 async function scrapeTrackedArtist(artistName) {
     const browser = await puppeteer.launch ({
-        headless: true,
         args: [
             "--disable-dev-shm-usage",
             "--disable-accelerated-2d-canvas",
@@ -25,7 +24,8 @@ async function scrapeTrackedArtist(artistName) {
             "--no-zygote",
         ],
         executablePath: process.env.NODE_ENV === 'production' ? process.env.PUPPETEER_EXECUTABLE_PATH : puppeteer.executablePath(),
-        protocolTimeout: 300000
+        protocolTimeout: 300000,
+        headless: false
 	})
 
     try {
