@@ -50,6 +50,7 @@
 
 /* Artist card styling */
 .card {
+  position: relative;
   border: 1px solid #ddd;
   border-radius: 8px;
   margin-bottom: 16px;
@@ -72,9 +73,16 @@
 }
 
 .concert-list {
+  position: absolute;
   list-style: none;
-  padding: 0;
-  margin: 0;
+  background-color: #fff;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 8px;
+  z-index: 100;
+  width: 100%;
+  left: 0;
 }
 
 .concert-item {
