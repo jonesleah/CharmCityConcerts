@@ -47,7 +47,8 @@ const App = () => {
     const getArtists = async () => {
       try {
         const response = await axios.get(`${process.env.REACT_APP_API_URL}/api/get-artists`)
-        setArtists(response.data.artists);
+        console.log(response.data)
+        setArtists(response.data.artists)
       } catch (err) {
         console.log('Error getting tracked artists concerts:', err)
       }

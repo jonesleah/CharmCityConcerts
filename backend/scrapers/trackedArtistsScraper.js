@@ -5,14 +5,17 @@ import Artist from '../models/artistModel.js'
 import mongoose from 'mongoose';
 import dotenv from "dotenv"
 dotenv.config()
+import proxyChain from "proxy-chain"
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // Scrape concerts of a specified tracked artist
 async function scrapeTrackedArtist(artistName) {
+    // const proxyURL = "http://8c1442360abc3af99287fca5c58da5f3dbbed725:premium_proxy=true@proxy.zenrows.com:8001"
+    // const newProxyURL = await proxyChain.anonymizeProxy({ url: proxyURL })
     const browser = await puppeteer.launch ({
         args: [
-            '--user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"',
+            //`--proxy-server=${newProxyURL}`,
             "--disable-setuid-sandbox",
             "--no-sandbox",
             "--disable-gpu",
@@ -21,6 +24,7 @@ async function scrapeTrackedArtist(artistName) {
         ],
         executablePath: process.env.NODE_ENV === 'production' ? process.env.PUPPETEER_EXECUTABLE_PATH : puppeteer.executablePath(),
         protocolTimeout: 300000,
+        ignoreHTTPSErrors: true,
 	})
 
     try {
@@ -28,6 +32,17 @@ async function scrapeTrackedArtist(artistName) {
         console.log("Navigating to Ticketmaster general page")
         const url = `https://www.ticketmaster.com/search?q=${encodedName}`
         const page = await browser.newPage()
+        await page.setRequestInterception(true)
+        page.on('request', interceptedRequest => {
+            if (
+                interceptedRequest.url().endsWith('.png') ||
+                interceptedRequest.url().endsWith('.jpg')
+            ) { 
+                interceptedRequest.abort()
+            } else {
+                interceptedRequest.continue()
+            }
+        })
         await page.goto(url, {waitUntil: 'networkidle2', timeout: 300000})
         console.log("Page loaded")
         await page.setViewport({ width: 1080, height: 1024 })
@@ -75,8 +90,9 @@ async function scrapeTrackedArtist(artistName) {
     }
     finally {
         await browser.close()
+        //await proxyChain.closeAnonymizedProxy(newProxyURL, true)
     }
 }
 
-//const events = await scrapeTrackedArtist("Taylor Swift")
+// const events = await scrapeTrackedArtist("Taylor Swift")
 export { scrapeTrackedArtist }

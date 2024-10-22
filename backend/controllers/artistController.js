@@ -26,6 +26,7 @@ export const getArtistData = async(req, res) => {
     try {
         const artists = await Artist.find()
         res.status(200).json({message: 'Found artists:', artists})
+        console.log('Successfully fetched artist data from DB')
     }
     catch (err) {
         console.log('Error fetching artists:', err)

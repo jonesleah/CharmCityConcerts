@@ -1,0 +1,2676 @@
+(function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.VendorService = f()}})(function(){var define,module,exports;return (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
+/**
+ * Created by brett.hale on 9/9/15.
+ */
+//options:
+// dataLayer:reference to dataLayer defaults to digitalData
+// environment: akamai env to use [local,dev,qa,prod]
+// getVar: reference to getVar function
+// rules: array of rules to formulate the endpoint
+// [{testRegex:/regex/,testField:'pageName',urlTemplate:'<%baseUrl%>/<%environment%>/event/e_<%data.eventID%>'}]
+module.exports = require('./lib/VendorService');
+
+},{"./lib/VendorService":3}],2:[function(require,module,exports){
+//****** TM Pixel ******//
+module.exports = function (scope) {
+
+    var settings = scope.config.divolte;
+    var params = {};
+    var callbacks = [function () {
+        scope.log('Divolte Library Loaded')
+    }];
+
+    if (typeof settings.onLoad === 'function') {
+        callbacks.push(settings.onLoad);
+    }
+
+    var url = document.location.protocol + (settings.isStaging ? '//d.t-x.io/divolte.js' : '//d.t-x.io/divolte.js');
+
+    scope.log('Loading Divolte Library');
+
+    if (typeof window.requirejs !== 'undefined' && typeof window.require === 'function') {
+        window.require.config({shim:{divolte:{exports:'divolte'}},paths:{divolte: settings.url}});
+        scope.log('requirejs loading...', 'Divolte:');
+        window.require(['divolte'], function (d) {
+            window.divolte = d;
+            scope.log('requirejs finished loading.', 'Divolte:');
+            handleLibLoad(d);
+        });
+    } else {
+        loadScript();
+    }
+
+    function toArray (target) {
+
+        if (typeof target === 'object' && typeof target.push === 'function') {
+            return target;
+        } else if (typeof target === 'object') {
+            return [target];
+        }
+
+        if (typeof target === 'string') {
+            return target.split(',');
+        } else {
+            return [];
+        }
+
+    }
+
+    /**
+     * Send becomes TMPixel.push
+     * @param data
+     */
+    function send (data) {
+        scope.log('Sending called:' + data.event + ' -- ' + JSON.stringify(data.data), 'Divolte: ');
+        var divolte = window['divolte'] || window['module'] && window['module']['exports'];
+        if (divolte && divolte.signal) {
+            var topics = [];
+            if (settings.topics) topics = toArray(settings.topics);
+
+            if (data.data.topics) {
+                data.data.topics = toArray(data.data.topics).concat(topics);
+                data.data.topics = scope.uniq(data.data.topics);
+            } else {
+                data.data.topics = topics;
+            }
+
+            /**
+             * Include all params from page load call
+             */
+            if (data.sendAll) {
+                data.data = scope.merge(params, data.data);
+            }
+
+
+            scope.log('Sending with params:' + data.event + ' -- ' + JSON.stringify(data.data), 'Divolte: ');
+
+            if(settings.suppressCall) return;
+
+            divolte.signal(data.event, data.data);
+            scope.log('Sent Successfully', 'Divolte: ');
+
+        } else {
+            scope.log('ERROR: Divolte did not load', 'Divolte: ');
+        }
+
+    }
+
+    function clearQueue () {
+        scope.log('Clearing Queue {window.TmPixel}', 'Divolte: ');
+        var queue = window.TmPixel || [];
+        if (queue && queue.length>0) {
+            queue.forEach(function (item,index) {
+                send(item);
+            });
+        }
+
+        window.TmPixel = {push:send};
+    }
+
+    /**
+     * You should make all necessary change to overrides and settings before calling scope.
+     */
+    scope.trackPageView = function () {
+        settings = scope.config.divolte;
+        params = {};
+        buildData(params);
+        scope.log('TrackPageView - Merged Settings: ' + JSON.stringify(settings), 'Divolte: ');
+        send({event:'page_load', data:params});
+    };
+
+    function handleLibLoad () {
+        callbacks.forEach(function (onloadCallback) {
+            if (typeof onloadCallback === 'function') {
+
+                try {
+                    onloadCallback();
+                } catch (e) {
+                    scope.log('Callback Error ' + e.message, 'Divolte: ');
+                }
+            }
+        });
+
+        x = true;
+        if (settings.autoTrack === false) {
+            scope.log('Manual Tracking Required - Queue ignored', 'Divolte: ');
+            return;
+        }
+
+        if (typeof settings.autoTrack === 'undefined' || settings.autoTrack === true || settings.autoTrack === 'events') {
+            /**
+             * AutoTrack page view only when undefined (mimic default true behavior) or explicitly set to true
+             */
+            if (settings.autoTrack !== 'events') {
+                scope.log('AutoTrack Enabled - Sending Initial PageView', 'Divolte: ');
+                scope.trackPageView();
+            } else {
+                buildData(params);
+                scope.log('AutoTrack Events Only - No PageTrack Sent', 'Divolte: ');
+            }
+            /**
+             * All of these cases we want to clear the queue.
+             */
+            clearQueue();
+
+        } else if (settings.autoTrack === false) {
+
+            scope.trackEvent = send;
+
+        } else {
+            scope.log('Error configuring autoTrack setting, accptable values are [true, false, \'events\']');
+        }
+
+    }
+
+    function loadScript() {
+
+        scope.log('Loading Divolte Script', 'Divolte: ');
+        var x = false,
+            p, s = document.createElement('script');
+        s.type = 'text/javascript';
+        s.async = 1;
+        s.src = url;
+        s.onload = s.onreadystatechange = function () {
+            scope.log('Finished Loading Divolte Script', 'Divolte: ');
+            if (!x && (!this.readyState || this.readyState == 'complete')) {
+                handleLibLoad();
+            }
+        };
+        p = document.getElementsByTagName('script')[0];
+        p.parentNode.insertBefore(s, p);
+
+    }
+
+    function extractDomainName (pageName) {
+        return pageName.replace(/\:.*$/g,'');
+    }
+
+    function collectData(map, params) {
+
+        var value = null;
+
+        if (map.data) {
+            // check if nested schema exists and collect data recursively
+            if (typeof map.data === 'object') {
+
+                var nestedParams = {};
+                map.data.forEach && map.data.forEach(function (item, ind) {
+
+                    collectData(item, nestedParams);
+
+                });
+
+                if (Object.keys(nestedParams).length > 1) {
+
+                    if (typeof map.transform === 'function') {
+                        nestedParams = map.transform(nestedParams);
+                    }
+
+                    params[map.key] = nestedParams;
+                }
+
+            } else {
+                value = scope.getValue(map.data, map.dataObj);
+                if (value !== undefined && value !== null && value !== '') {
+
+                    if (typeof map.transform === 'function') {
+                        value = map.transform(value);
+                    }
+
+                    if (value !== undefined && value !== null && value !== '') {
+                        params[map.key] = value;
+                    }
+                }
+            }
+        }
+
+    }
+
+    function unwrapQuery(value) {
+        return value.join(',');
+    }
+
+    /**
+     * @type {*[]}
+     * key: maps to divolte schema
+     * data: what to look for in digitalData or dataObj if provided
+     * dataObj: optional - if not digitalData where to look for the data needed
+     *
+     * todo: add type validation for divolte schema
+     */
+    scope.schema = [
+        {key:'browserId',data:'BID', dataObj: scope.cookies},
+        {key:'memberId',data:'MID', dataObj: scope.cookies},
+        {key:'marketId',data:'MARKET_ID', dataObj: scope.cookies},
+        {key:'sessionId',data:'SID', dataObj: scope.cookies},
+        {key:'sessionIdTM',data:'TMSID', dataObj: scope.cookies},
+        {key:'pageType',data:'page.pageInfo.pageType'},
+        {key:'pageName',data:'page.pageInfo.pageName'},
+        {key:'domain',data:'page.pageInfo.pageName', transform: extractDomainName},
+        {key:'eventId',data:'page.attributes.eventID'},
+        {key:'eventDate',data:'page.attributes.eventDate'},
+        {key:'majorCategoryId',data:'page.attributes.primaryCategoryID'},
+        {key:'minorCategoryId',data:'page.attributes.secondaryCategoryID'},
+        {key:'artistId',data:'page.attributes.artistID'},
+        {key:'orderTicketQuantity',data:'transaction.attributes.ticketQuantity'},
+        {key:'orderTotal',data:'transaction.total.transactionTotal'},
+        {key:'orderId',data:'transaction.transactionID'},
+        {key:'orderConfirmationCode',data:''},
+        {key:'orderFaceValueTotal',data:'transaction.total.basePrice'},
+        {key:'orderFeeTotal',data:'transaction.total.feesTotal'},
+        {key:'searchQuery',data:'page.pageInfo.onsiteSearchTerm'},
+        {key:'searchPageNumber',data:''},
+        {key:'tmLink',data:'tmLink',dataObj:scope.urlParams, transform: unwrapQuery},
+        {key:'majorCategoryId', data:'page.category.primaryCategoryID'},
+        {key:'minorCategoryId', data:'page.category.subCategory1ID'},
+        {key:'fanbuilder', transform: toArray, data: [
+            {key: 'userId', data: 'mc_eid', dataObj: scope.urlParams, transform: unwrapQuery},
+            {key: 'campaignId', data: 'mc_cid', dataObj: scope.urlParams, transform: unwrapQuery},
+            {key: 'provider', data: 'mc_cid', dataObj: scope.urlParams, transform: (function(value){return value[0] && 'MAILCHIMP' || null;})}
+        ]},
+        {key:'utm', transform: toArray, data: [
+            {key:'source', data: 'utm_source', dataObj: scope.urlParams, transform: unwrapQuery},
+            {key:'medium', data: 'utm_medium', dataObj: scope.urlParams, transform: unwrapQuery},
+            {key:'term', data: 'utm_term', dataObj: scope.urlParams, transform: unwrapQuery},
+            {key:'content', data: 'utm_content', dataObj: scope.urlParams, transform: unwrapQuery},
+            {key:'campaign', data: 'utm_campaign', dataObj: scope.urlParams, transform: unwrapQuery}
+        ]},
+        {key:'cfc', data:'cfc'}
+    ];
+
+    function buildData (params) {
+        scope.log('Building Data', 'Divolte: ');
+        if (settings.isStaging) {
+            params.isStagingEnvironment = true;
+        }
+
+        var schema = scope.schema;
+
+        /**
+         * This allows implementors to extend the schema without releasing fanbuilder.js
+         */
+        if(settings.additionalPageLoadParams){
+            schema = schema.concat(settings.additionalPageLoadParams);
+        }
+
+        for (var i = 0; i<schema.length; i++) {
+            collectData(schema[i], params);
+        }
+        scope.log('Params: ' + JSON.stringify(params), 'Divolte: ');
+
+
+    }
+
+};
+//****** End TM Pixel ******//
+
+},{}],3:[function(require,module,exports){
+var TmPixel = require('./TmPixel');
+
+module.exports = VendorService;
+
+function VendorService(options, overrides) {
+    const htmlSingleQuote = '\\\x27';
+    var self = this;
+
+    self.cookies   = self.readAllCookies();
+    self.urlParams = self.getUrlParams();
+    self.storeMap  = {
+        basePrice:        'transaction.total.basePrice',
+        transactionID:    'transaction.transactionID',
+        ticketQuantity:   'transaction.attributes.ticketQuantity',
+        orderID:          '',
+        confirmationID:   '',
+        orderDate:        '',
+        orderTime:        '',
+        ticketType:       'transaction.attributes.ticketType',
+        pageName:         'page.pageInfo.pageName',
+        promoterID:       'page.pageInfo.promoterID',
+        state:            'page.attributes.state',
+        zip:              'page.attributes.zip',
+        country:          'page.attributes.country',
+        value:            'transaction.profile.address.stateProvince',
+        billingZip:       'transaction.profile.address.postalCode',
+        billingState:     'transaction.profile.address.stateProvince',
+        billingCountry:   'transaction.profile.address.country',
+        dmaID:            '',
+        eventDate:        'page.attributes.eventDate',
+        eventTime:        'page.attributes.eventTime',
+        eventName:        'page.attributes.eventName',
+        eventID:          'page.attributes.eventID',
+        artistName:       'page.attributes.artistName',
+        artistID:         'page.attributes.artistID',
+        venueName:        'page.attributes.venueName',
+        venueID:          'page.attributes.venueID',
+        majorCatgoryID:   'page.category.primaryCategoryID',
+        majorCatgoryName: 'page.category.primaryCategory',
+        minorCatgoryID:   'page.category.subCategoryID',
+        minorCatgoryName: 'page.category.subCategory',
+        teamID:           'page.attributes.teamID',
+        currency:         'transaction.total.currency',
+        sessionID:        '',
+        cfc:              'cfc'
+    };
+
+    self.config         = options || {};
+    self.config.version = '2.0.25';
+    self.overrides      = overrides || {};
+
+    if ( self.config.dataLayerObject ) {
+        self.config.data = self.getValue(self.config.dataLayerObject, window);
+    }
+
+    if ( self.config.divolte && self.config.divolte.enabled ) {
+        self.tmPixel = new TmPixel(self);
+    }
+
+    self.trackPage = function (skipUpdate) {
+
+        if(!skipUpdate) {
+            if ( self.config.dataLayerObject ) {
+                self.config.data = self.getValue(self.config.dataLayerObject, window);
+            }
+        }
+
+        if ( self.config.data ) {
+
+            self.config.data.pageUrl = window.location.href;
+            self.config.data.pageReferrer = document.referrer;
+            self.config.data.random  = Math.random() * 100000000000000000;
+            self.config.data.pageTitle = window.document.title.replace(/\x27/g, htmlSingleQuote) || '';
+
+            self.handlePixels(self.config.divolte && self.config.divolte.enabled && self.config.logPixels);
+        }
+    };
+
+    if ( self.config.autoFirePixels !== false ) {
+        self.trackPage(true);
+    }
+
+    return self;
+}
+
+VendorService.prototype.addGA2CustomDimensions = function (ga, trackerName, customVariables) {
+    var self = this;
+
+    if (typeof customVariables !== 'undefined') {
+        for (var key in customVariables) {
+            ga(trackerName + '.set', key, self.getValue(customVariables[key]));
+        }
+    }
+}
+
+VendorService.prototype.addSlashes = function(str)
+{
+    return (str + '').replace(/[\\"']/g, '\\$&').replace(/\u0000/g, '\\0');
+};
+VendorService.prototype.ajax = function(url){
+
+    var self = this;
+    var isMS8or9 = window.XDomainRequest && (window.navigator.userAgent.match(/Trident\/5\./) || window.navigator.userAgent.match(/Trident\/4\./));
+    var xmlhttp,requestThen,callbacks = [];
+
+    if(isMS8or9){
+        xmlhttp = new XDomainRequest();
+        xmlhttp.onsuccess = function(){
+            for(var i=0;i<callbacks.length;i++){
+                var fns = callbacks.shift();
+                if(typeof fns.success === 'function'){
+                    fns.success(JSON.parse(xmlhttp.responseText));
+                }
+            }
+        };
+        xmlhttp.onerror = function(){
+            for(var i=0;i<callbacks.length;i++){
+                var fns = callbacks.shift();
+                if(typeof fns.error === 'function'){
+                    fns.error(xmlhttp.responseText);
+                }
+            }
+        };
+        requestThen = function(success,error){
+            callbacks.push({success:success,error:error})
+        };
+    }else{
+        xmlhttp = new XMLHttpRequest();
+
+        xmlhttp.onreadystatechange = function () {
+            if (xmlhttp.readyState == (XMLHttpRequest.DONE || 4)) {
+                for(var i=0;i<callbacks.length;i++){
+                    var fns = callbacks.shift();
+                    if(xmlhttp.status == 200 && typeof fns.success === 'function' && xmlhttp.responseText.length > 0){
+                        fns.success(JSON.parse(xmlhttp.responseText));
+                    }else if(xmlhttp.status !== 200 && typeof fns.error === 'function'){
+                        fns.error(xmlhttp.responseText);
+                    }
+                }
+
+            }
+        };
+
+        requestThen = function(success,error){
+            if(xmlhttp.readyState == (XMLHttpRequest.DONE || 4)){
+                var callback = xmlhttp.status == 200 ? success : error;
+                if(typeof callback === 'function')callback(xmlhttp.responseText);
+            }else{
+                callbacks.push({success:success,error:error})
+            }
+        };
+    }
+
+    try{
+        xmlhttp.open("GET", url, true);
+        xmlhttp.send();
+    }catch(e){
+            self.log('Pixel Service: Ajax Error for url: ' + url);
+    }
+
+
+    return {
+        then:requestThen
+    };
+
+};
+VendorService.prototype.clone = function(from, to)
+{
+    if (from == null || typeof from != "object") return from;
+    if (from.constructor != Object && from.constructor != Array) return from;
+    if (from.constructor == Date || from.constructor == RegExp || from.constructor == Function ||
+        from.constructor == String || from.constructor == Number || from.constructor == Boolean)
+        return new from.constructor(from);
+
+    to = to || new from.constructor();
+
+    for (var name in from)
+    {
+        to[name] = typeof to[name] == "undefined" ? this.clone(from[name], null) : to[name];
+    }
+
+    return to;
+};
+VendorService.prototype.createElem = function(type,url,id,cb) {
+    var elem = document.createElement(type);
+    elem.src = url;
+    elem.width = 1;
+    elem.height = 1;
+    elem.setAttribute('style','display:none');
+    if(typeof id === 'string')elem.id = id;
+    elem.setAttribute('frameborder',0);
+    if(typeof cb === 'function'){
+        elem.onload = cb;
+    }
+    document.body.appendChild(elem);
+
+};
+VendorService.prototype.createIframeWithContent = function(id, html, cb) {
+    var self = this;
+
+    var iframe           = document.createElement('iframe');
+    iframe.style.cssText = 'width:1px; height:1px; display:none;';
+    iframe.frameborder   = 0;
+    iframe.id            = id + "";
+    iframe.width         = 1;
+    iframe.height        = 1;
+
+    if(typeof cb === 'function'){
+        iframe.onload = cb;
+    }
+
+    document.body.appendChild(iframe);
+    var doc = ( iframe.contentWindow || iframe.contentDocument );
+    if ( doc.document ) {
+        doc = doc.document;
+    }
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+};
+
+
+
+VendorService.prototype.embedInScriptTag = function(pixelCodes) {
+    var html = '<script>';
+    pixelCodes.forEach(function (pixelCode) {
+        html += !!pixelCode ? pixelCode : '';
+    })
+    html += '</script>';
+
+    return html;
+}
+VendorService.prototype.fetchPixels = function(callback){
+    var self = this;
+
+    var url = self.getPixelFileEndpoint();
+    if(self.config.baseUrl){
+        self.config.environment = self.config.environment || 'local/';
+        if(url) {
+            self.ajax('https://' + url)
+                .then(function(results){
+                callback(null, results);
+            },function(data){
+                    callback(data)
+                });
+        }
+    } else {
+        self.log('No baseUrl set in config to retrieve pixels');
+    }
+
+};
+var ticketmasterAffiliation = 'Ticketmaster';
+
+VendorService.prototype.generateGA4HtmlScriptTag = function (tag) {
+  var self = this;
+
+  var eCommerceProducts;
+  var productData = self.getValue('productDataJson', self.config.data);
+  var productItems = [];
+  var trackingId = tag.trackingId.replace(/\s/g, '');
+  var pageTitle = self.getValue('pageTitle', self.config.data);
+
+  try {
+    eCommerceProducts = JSON.parse(productData);
+  } catch (e) {
+    eCommerceProducts = [];
+  }
+
+  var html = generateOpeningHtmlPart(self, trackingId, pageTitle, tag.customVariables);
+
+  if (isAConversionPage(self, eCommerceProducts.length)) {
+    html += generateConversionPageHtmlContent(self, eCommerceProducts, productItems, tag.customVariables);
+  } else if (isAnEventDetailPage(eCommerceProducts.length)) {
+    html += generateEventDetailPageHtmlContent(self, eCommerceProducts, productItems, tag.customVariables);
+  }
+
+  html += generateClosingHtmlPart();
+  return html;
+}
+
+var isAConversionPage = function (vendorService, eCommerceProductsSize) {
+  return vendorService.getValue('transaction.transactionID', vendorService.config.data) && eCommerceProductsSize;
+}
+
+var isAnEventDetailPage = function (eCommerceProductsSize) {
+  return eCommerceProductsSize === 1;
+}
+
+var getCustomDimensionValues = function (service, customDimensions) {
+  var customDimensionsValues = {};
+  for (var key in customDimensions) {
+    customDimensionsValues[key] = service.getValue(customDimensions[key]);
+  }
+  return customDimensionsValues;
+}
+
+var getFormattedCustomDimensionsForHtml = function (service, customDimensions) {
+  var formattedCustomDimensions = '';
+  if (customDimensions && Object.keys(customDimensions).length > 0) {
+    formattedCustomDimensions += ',';
+    formattedCustomDimensions += JSON.stringify(getCustomDimensionValues(service, customDimensions))
+        .replace(/"([^"]+)":/g, '$1:')
+        .replace(/[{}]/g, '')
+        .replace(/"/g, "'");
+  }
+
+  return formattedCustomDimensions;
+}
+
+var generateEventDetailPageHtmlContent = function (service, eCommerceProducts, productItems, customDimensions) {
+  var product = eCommerceProducts[0];
+  var category = product.category.split('/');
+  var primaryCategory = category[0] || '';
+  var subCategory = category.length > 1 ? category[1] : '';
+  var customDimensionValues = getCustomDimensionValues(service, customDimensions);
+  var productItem = Object.assign(customDimensionValues, {
+    affiliation: ticketmasterAffiliation,
+    item_id: product.id,
+    item_name: product.name,
+    item_brand: product.brand,
+    item_category: primaryCategory,
+    item_category2: subCategory
+  });
+
+  productItems.push(productItem);
+
+  var eventDetailPageHtml = 'tmGtag(\'event\', \'view_item\', {';
+  eventDetailPageHtml += 'send_to: t,';
+  eventDetailPageHtml += 'items: ' + JSON.stringify(productItems);
+  eventDetailPageHtml += getFormattedCustomDimensionsForHtml(service, customDimensions);
+  eventDetailPageHtml += '});';
+
+  return eventDetailPageHtml;
+}
+
+var generateConversionPageHtmlContent = function (service, eCommerceProducts, productItems, customDimensions) {
+  eCommerceProducts.forEach(function (product) {
+    var category = product.category.split('/');
+    var primaryCategory = category[0] || '';
+    var subCategory = category.length > 1 ? category[1] : '';
+    var customDimensionsValues = getCustomDimensionValues(service, customDimensions);
+    var productItem = Object.assign(customDimensionsValues, {
+      affiliation: ticketmasterAffiliation,
+      item_id: product.id,
+      item_name: product.name,
+      item_brand: product.brand,
+      item_category: primaryCategory,
+      item_category2: subCategory,
+      item_variant: product.variant,
+      quantity: product.quantity,
+      price: product.price
+    });
+
+    productItems.push(productItem);
+  });
+
+  var conversionHtml = 'tmGtag(\'event\', \'purchase\', {';
+  conversionHtml += 'send_to: t,';
+  conversionHtml += 'currency: \'' + service.getValue('transaction.total.currency', service.config.data) + '\',';
+  conversionHtml += 'transaction_id: \'' + service.getValue('transaction.transactionID', service.config.data) + '\',';
+  conversionHtml += 'value: \'' + service.getValue('transaction.total.basePrice', service.config.data) + '\',';
+  conversionHtml += 'items: ' + JSON.stringify(productItems);
+  conversionHtml += getFormattedCustomDimensionsForHtml(service, customDimensions);
+  conversionHtml += '});';
+
+  return conversionHtml;
+}
+
+var generateOpeningHtmlPart = function (service, trackingId, pageTitle, customDimensions) {
+  var openingHtml = '<script>var t = \'' + trackingId + '\', ';
+  openingHtml += 'gts = function (i,d){var e=d.createElement(\'script\'),m=d.getElementsByTagName(\'script\')[0];e.src=\'https://www.googletagmanager.com/gtag/js?id=\'+i+\'&l=tmdl\';m.parentNode.insertBefore(e,m)};';
+  openingHtml += 'gts(t,document);';
+  openingHtml += 'window.tmdl = window.tmdl || [];';
+  openingHtml += 'function tmGtag(){tmdl.push(arguments);}';
+  openingHtml += 'tmGtag(\'js\', new Date());';
+  // Enhanced measurement bug
+  openingHtml += 'tmGtag(\'config\', t, {send_page_view: false});';
+  // Bug:  Enhanced Measurement has an unpredictable delay for page_view when configured in GA4 client account (out of our control)
+  // It's waiting/looking for scrolls, etc. Here we trigger page_view manually to ensure it goes out before ga-disable is set
+  openingHtml += 'tmGtag(\'event\', \'page_view\', {send_to: t, page_title: \'' + pageTitle + '\'' + getFormattedCustomDimensionsForHtml(service, customDimensions) + '});';
+
+  return openingHtml;
+}
+
+var generateClosingHtmlPart = function () {
+  return '</script>';
+}
+
+VendorService.prototype.generateTiktokHtmlScriptTag = function(tag) {
+    var self = this;
+    const pageType = getPageType(self);
+    if(pageType !== PageTypes.Unsupported)
+        return self.embedInScriptTag([generatePixelInstallationCode(tag.pixelId), generatePixelEventCode(self, tag, pageType)])
+    else
+        return null;
+}
+
+const generatePixelInstallationCode = function(pixelId) {
+    var installationCode = '!(function (w, d, t) {';
+    installationCode += 'w.TiktokAnalyticsObject = t;';
+    installationCode += 'var ttq = (w[t] = w[t] || []);';
+    installationCode += '(ttq.methods = [';
+    installationCode += '"page",';
+    installationCode += '"track",';
+    installationCode += '"identify",';
+    installationCode += '"instances",';
+    installationCode += '"debug",';
+    installationCode += '"on",';
+    installationCode += '"off",';
+    installationCode += '"once",';
+    installationCode += '"ready",';
+    installationCode += '"alias",';
+    installationCode += '"group",';
+    installationCode += '"enableCookie",';
+    installationCode += '"disableCookie",';
+    installationCode += ']),';
+    installationCode += '(ttq.setAndDefer = function (t, e) {';
+    installationCode += 't[e] = function () {';
+    installationCode += 't.push([e].concat(Array.prototype.slice.call(arguments, 0)));';
+    installationCode += '};';
+    installationCode += '});';
+    installationCode += 'for (var i = 0; i < ttq.methods.length; i++)';
+    installationCode += 'ttq.setAndDefer(ttq, ttq.methods[i]);';
+    installationCode += '(ttq.instance = function (t) {';
+    installationCode += 'for (var e = ttq._i[t] || [], n = 0; n < ttq.methods.length; n++)';
+    installationCode += 'ttq.setAndDefer(e, ttq.methods[n]);';
+    installationCode += 'return e;';
+    installationCode += '}),';
+    installationCode += '(ttq.load = function (e, n) {';
+    installationCode += 'var i = "https://analytics.tiktok.com/i18n/pixel/events.js";';
+    installationCode += '(ttq._i = ttq._i || {}),';
+    installationCode += '(ttq._i[e] = []),';
+    installationCode += '(ttq._i[e]._u = i),';
+    installationCode += '(ttq._t = ttq._t || {}),';
+    installationCode += '(ttq._t[e] = +new Date()),';
+    installationCode += '(ttq._o = ttq._o || {}),';
+    installationCode += '(ttq._o[e] = n || {}),';
+    installationCode += '(ttq._partner = ttq._partner || "Ticketmaster");';
+    installationCode += 'var o = document.createElement("script");';
+    installationCode += '(o.type = "text/javascript"),';
+    installationCode += '(o.async = !0),';
+    installationCode += '(o.src = i + "?sdkid=" + e + "&lib=" + t);';
+    installationCode += 'var a = document.getElementsByTagName("script")[0];';
+    installationCode += 'a.parentNode.insertBefore(o, a);';
+    installationCode += '});';
+    installationCode += 'ttq.load("' + pixelId + '");';
+    installationCode += 'ttq.page();';
+    installationCode += '})(window, document, "ttq");';
+
+    return installationCode;
+}
+
+const generatePixelEventCode = function(vendorService, tag, pageType) {
+    var eventCode = 'setTimeout(function() {';
+    eventCode +=  'if( !window.ttq ){return;}';
+
+    eventCode += generatePageTypeHtmlPart(vendorService, tag.pixelId, pageType);
+
+    eventCode += '}, 500);';
+    return eventCode;
+}
+
+const PageTypes = {
+    Venue: "venue page",
+    Artist: "artist page",
+    EventDetail: "event detail page",
+    Confirmation: "confirmation page",
+    Unsupported: ""
+};
+
+var getPageType = function(vendorService) {
+    const venueId = vendorService.getValue('page.attributes.venueID', vendorService.config.data);
+    const artistId = vendorService.getValue('page.attributes.artistID', vendorService.config.data);
+    const eventId = vendorService.getValue('page.attributes.eventID', vendorService.config.data);
+    const orderId = vendorService.getValue('transaction.transactionID', vendorService.config.data);
+
+    if (!!venueId && !artistId && !eventId && !orderId)
+        return PageTypes.Venue;
+    else if (!!artistId && !venueId && !eventId && !orderId)
+        return PageTypes.Artist;
+    else if (!!eventId && !orderId)
+        return PageTypes.EventDetail;
+    else if (!!orderId)
+        return PageTypes.Confirmation;
+    else
+        return PageTypes.Unsupported;
+}
+
+var generatePageTypeHtmlPart = function(vendorService, pixelId, pageType) {
+    switch(pageType) {
+        case PageTypes.Venue:
+            return generateVenuePageHtmlPart(vendorService, pixelId);
+        case PageTypes.Artist:
+            return generateArtistPageHtmlPart(vendorService, pixelId);
+        case PageTypes.EventDetail:
+            return generateEventDetailPageHtmlPart(vendorService, pixelId);
+        case PageTypes.Confirmation:
+            return generateConfirmationPageHtmlPart(vendorService, pixelId);
+    }
+}
+
+const generateVenuePageHtmlPart = function(vendorService, pixelId) {
+    return 'ttq.instance(\''+ pixelId +'\').track(\'ViewContent\',{content_category:\''+ vendorService.getValue('page.attributes.venueName') +'\'});';
+}
+
+const generateArtistPageHtmlPart = function(vendorService, pixelId) {
+    return 'ttq.instance(\''+ pixelId +'\').track(\'ViewContent\',{content_category:\''+ vendorService.getValue('page.attributes.artistName') +'\'});';
+}
+
+const generateEventDetailPageHtmlPart = function(vendorService, pixelId) {
+    return 'ttq.instance(\''+ pixelId +'\').track(\'ViewContent\', {  content_category:\''+ vendorService.getValue('page.attributes.artistName') +'\',  content_name: \''+ vendorService.getValue('page.attributes.eventName') +'\',  content_id: \''+ vendorService.getValue('page.attributes.eventID') +'\',  content_type: \'product\' });';
+}
+
+const generateConfirmationPageHtmlPart = function(vendorService, pixelId) {
+    var confirmationPageCode = 'ttq.instance(\''+ pixelId +'\').track(\'CompletePayment\', {';
+    confirmationPageCode += 'content_category:\''+ vendorService.getValue('page.attributes.artistName') +'\',';
+    confirmationPageCode += 'content_name: \''+ vendorService.getValue('page.attributes.eventName') +'\',';
+    confirmationPageCode += 'content_id: \''+ vendorService.getValue('page.attributes.eventID') +'\',';
+    confirmationPageCode += 'content_type: \'product\',';
+    confirmationPageCode += 'value:\''+ vendorService.getValue('transaction.total.basePrice') +'\',';
+    confirmationPageCode += 'currency:\''+ vendorService.getValue('transaction.total.currency') +'\',';
+    confirmationPageCode += 'quantity:\''+ vendorService.getValue('transaction.attributes.ticketQuantity') +'\'});';
+
+    return confirmationPageCode;
+}
+
+
+VendorService.prototype.readAllCookies = function() {
+    var pairs = document.cookie.split(";");
+    var cookies = {};
+    for (var i=0; i<pairs.length; i++){
+        var pair = pairs[i].split("=");
+        cookies[pair[0].replace(/ /g,'')] = decodeURIComponent(pair[1]);
+    }
+    return cookies;
+};
+VendorService.prototype.getPixelFileEndpoint = function(){
+    var self = this;
+    var rules = self.config.rules;
+    var urlToBuild = '';
+
+    for(var i = 0; i < rules.length; i++){
+        var currentRule = rules[i];
+        if(!currentRule.testField || !currentRule.testRegex){
+            continue;
+        }
+        if(currentRule.testRegex.test(self.getValue(currentRule.testField,self.config)) && currentRule.urlTemplate){
+            var pieces = currentRule.urlTemplate.match(/<%([^%>]+)%>/g) || [];
+            urlToBuild = currentRule.urlTemplate+'';
+            for(var j = 0; j < pieces.length; j++){
+                //data.eventID or baseUrl
+                var value='',
+                store=self.config,
+                dataPoint = pieces[j].replace('<%','').replace('%>','');
+                if(/^config\./.test(dataPoint)){
+                    dataPoint = dataPoint.replace(/^config\./,'');
+                }else
+                if(/^data\./.test(dataPoint)){
+                    dataPoint = dataPoint.replace(/^data\./,'');
+                    store = self.config.data;
+                }else
+                if(/^currentRule\./.test(dataPoint)){
+                    dataPoint = dataPoint.replace(/^currentRule\./,'');
+                    store = currentRule;
+                }
+
+                value = self.getValue(dataPoint,store);
+                if(typeof value !== 'number' && typeof value !== 'string')value = '';
+
+                urlToBuild = urlToBuild.replace(pieces[j],value);
+
+            }
+            break;
+        }
+
+    }
+
+    return urlToBuild || false;
+
+};
+VendorService.prototype.getScript = function(url,id,appendTo,cb){
+    var self = this;
+    try{
+        newScript = document.createElement('script');
+        newScript.type = 'text/javascript';
+        newScript.src = url;
+        newScript.async = true;
+        if(typeof id === 'string')newScript.id = id;
+        if(typeof cb === 'function'){
+            newScript.onload = cb;
+        }
+        if(appendTo){
+            appendTo.appendChild(newScript);
+        }else{
+            document.getElementsByTagName('head')[0].appendChild(newScript);
+        }
+    }catch(e){
+        if(self.config.debug === true && typeof console !== 'undefined' && typeof tags[0] !== 'undefined'){
+            console.log('Pixel Service: Script Loading Failed:' + url);
+        }
+    }
+
+};
+
+
+VendorService.prototype.getUrlParams = function (location) {
+    location = location || document.location;
+    var qd = {};
+    location.search.substr(1).split("&").forEach(function (item) {
+        var k = item.split("=")[0]
+            , v = decodeURIComponent(item.split("=")[1]);
+        (k in qd) ? qd[k].push(v) : qd[k] = [v];
+    });
+    return qd;
+};
+VendorService.prototype.getValue = function (path, obj) {
+    var self = this;
+    if (typeof self.overrides[path] !== 'undefined') {
+        self.log('Pixel Service: Override found for path: ' + path);
+        var override = self.overrides[path];
+        if (typeof override === 'function') {
+            return override();
+        } else {
+            //it's a constant
+            return self.overrides[path];
+        }
+    }
+
+    var toNumeric = ['ticketQuantity', 'basePrice', 'feesTotal', 'transactionTotal'];
+    obj = obj || self.config.data;
+    for (var i = 0, path = path.split('.'), len = path.length; i < len; i++) {
+        if (typeof obj[path[i]] !== 'undefined') {
+            if (typeof obj[path[i]] === 'function') {
+                obj = obj[path[i]]();
+            } else {
+                if (toNumeric.indexOf(path[i]) > -1 && !obj[path[i]]) {
+                    obj = 0;
+                } else {
+                    obj = obj[path[i]];
+                }
+            }
+        } else {
+            obj = "";
+            break;
+        }
+    }
+    return obj;
+};
+/**
+ * Return current lib version
+ */
+VendorService.prototype.log = function () {
+    var self = this;
+    return self.config.version;
+
+};
+VendorService.prototype.handleError = function(msg){
+    return function(data){
+        if(typeof console !== 'undefined'){
+            console.error('ERROR: %s', msg, data);
+        }
+    };
+};
+VendorService.prototype.handlePixels = function(logPixels)
+{
+    var self = this;
+    self.pixelProcessProgress = [];
+    self.fb3 = self.pixelProcessProgress;
+    self.fetchPixels(function (err, results) {
+
+        if(err) {
+            self.handleError('Failed to retrieve tags from CDN')(err);
+            self.pixelProcessProgress.push({summary: 'Failed to retrieve tags from CDN', msg:err});
+            return;
+        } else if (results && results.length && results.length > 0) {
+            self.pixelProcessProgress.push({summary: 'Fetched Pixels Successfully', msg: 'Found ' + results.length, page: self.getValue('page.pageInfo.pageName') });
+        } else {
+            self.log('No Tags to Process');
+            return;
+        }
+
+        self.processTags(results, function (err) {
+
+            if(err) {
+                self.handleError('Failed to process tags')(err);
+                self.pixelProcessProgress.push({summary: 'Failed to process tags', msg:err});
+                return;
+            } else {
+                self.pixelProcessProgress.push({summary: 'Sorted tags successfully', page: self.getValue('page.pageInfo.pageName')});
+            }
+
+            self.processPixels(false, function (err, status){
+
+                var data = {pixels: status};
+                if(err) {
+                    self.handleError('Failed to process pixels')(err);
+                    self.pixelProcessProgress.push({summary: 'Failed to process ALL pixels sucessfully', pixelsAttempted: results.length, pixelErrors: err.length , errors:err, page: self.getValue('page.pageInfo.pageName')});
+                    data.hasPixelErrors = true;
+                } else {
+                    self.pixelProcessProgress.push({summary: 'Processed Pixels Successfully', page: self.getValue('page.pageInfo.pageName')});
+                }
+
+                if (logPixels) {
+                    window.TmPixel = window.TmPixel || [];
+                    window.TmPixel.push({event: 'pixellogs', data: data, sendAll: true});
+                }
+
+            });
+        });
+    });
+};
+/**
+ * Log to console
+ * @param msg
+ * @param prefix
+ */
+VendorService.prototype.log = function (msg, prefix) {
+    var self = this;
+    prefix = prefix || 'Pixel Service: ';
+    if (self.config.debug === true && typeof console !== 'undefined') {
+        console.log(prefix + msg);
+    }
+};
+/**
+ * Merge
+ * @param defMap -- source obj
+ * @param overrides -- target obj, values will override the source obj.
+ * @returns {{}}
+ */
+VendorService.prototype.merge = function(defMap, overrides){
+    var keys = Object.keys(defMap).concat(Object.keys(overrides)),
+        copy = {};
+    keys.forEach(function (key, index) {
+        var primary = overrides[key], secondary = defMap[key];
+        if (primary !== undefined && primary !== null && primary !== '') {
+            copy[key] = primary;
+        } else if (secondary !== undefined && secondary !== null && secondary !== '') {
+            copy[key] = secondary;
+        }
+
+    });
+    return copy;
+};
+VendorService.prototype.processPixels = function(sendToDivolte, callback){
+    var self = this;
+    var status = [];
+    var hasErrors = [];
+    for(var i = 0,keys=Object.keys(self.sortedTags);i<keys.length;i++){
+        var service = keys[i];
+        self.log('Trying to find method: ' + service);
+
+        if(typeof self[service] === 'function'){
+            var tags = self.sortedTags[service];
+            for ( var j = 0; j < tags.length; j++ ) {
+                var record = { id: tags[j].id, type: tags[j].type, endDate: tags[j].endDate, beginDate: tags[j].beginDate, domains: tags[j].domains};
+                try {
+                    self[service](tags[j], j);
+                } catch ( e ) {
+                    record.error = e.message;
+                    hasErrors.push({error: e.message, pixel: record });
+                    self.log('Failed to run method for service/pixelId: ' + service + '/' + tags[j].id);
+                }
+                status.push(record);
+            }
+        }
+    }
+
+    self.pixelHistory = self.pixelHistory || [];
+    self.pixelHistory = self.pixelHistory.concat(status);
+    callback(hasErrors.length>0 ? hasErrors : null, status);
+
+};
+VendorService.prototype.processTags = function (results, callback) {
+    var self     = this;
+
+    var sortedTags     = {};
+    var now            = new Date().getTime(),
+        domain         = self.getValue('page.pageInfo.domain', self.config.data),
+        isConfirmation = /Checkout: Confirmation/.test(self.getValue('page.pageInfo.pageName')),
+        pageSubtype    = self.getValue('transaction.attributes.inventoryType') || 'primary';
+
+    for ( var i = 0; i < results.length; i++ ) {
+
+        if ( typeof results[i].types === 'undefined' ) {  //if there are no types, we can assume it's TM
+
+            var defaultCaseDomains = false;
+            if ( typeof results[i].domains === 'undefined' || results[i].domains.length < 1 ) {
+                results[i].domains = [];
+                if ( ['US_DESKTOP', 'CA_DESKTOP', 'US_MOBILE', 'CA_MOBILE'].indexOf(domain) !== -1 ) {
+                    defaultCaseDomains = true;
+                }
+            }
+
+            var fireBasedOnPageSubtype = true; //by default, we don't worry about primary/resale subtypes
+            if ( isConfirmation ) {
+                //no subtypes: this is an older pixel from before subtypes were supported, so just fire away
+                if ( typeof results[i].pageSubtypes === 'undefined' || results[i].pageSubtypes.length < 1 ) {
+                    fireBasedOnPageSubtype = true;
+                }
+                //subtypes exist: in this case, if the page subtype of the current confirmation page is not in the list, don't fire the pixel
+                else if ( results[i].pageSubtypes.indexOf(pageSubtype.toUpperCase()) === -1 ) {
+                    fireBasedOnPageSubtype = false;
+                }
+            }
+
+            //when to fire a pixel
+            if ( results[i].enabled !== false && 										//pixel is enabled
+                 (results[i].endDate == null || now < results[i].endDate) && 										//now is between the begin and end dates
+                 now > results[i].beginDate &&
+                 (results[i].domains.indexOf(domain) > -1 || defaultCaseDomains) && 	//you are on the correct domain
+                 (fireBasedOnPageSubtype)											// the primary/resale targeting matches correctly (logic for this is above)
+            ) {
+                var key = self.toCamelCase(results[i].slug);
+                if ( typeof sortedTags[key] === 'undefined' ) {
+                    sortedTags[key] = [];
+                }
+                sortedTags[key].push(results[i]);
+            }
+        }
+
+        //case of account manager
+        else if ( typeof results[i].types !== 'undefined' ) {
+            var correctPage = false;
+            var pageName    = domain = self.getValue('page.pageInfo.pageName', self.config.data);
+            var pageType = null;
+
+            if (!(/: Checkout$/.test(pageName) || /: Billing$/.test(pageName))) {
+                if (/^((?!(Buy|Confirmation)).)*$/.test(pageName)) {
+                    pageType = 'LANDING';
+                }
+                if (/^((?!Confirmation).)*Buy((?!Confirmation).)*$/.test(pageName)) {
+                    pageType = 'PURCHASING';
+                }
+                if (/Buy: Confirmation/.test(pageName)) {
+                    pageType = 'CONFIRMATION';
+                }
+            }
+
+            if ( results[i].types.indexOf(pageType) !== -1 ) {
+                correctPage = true;
+            }
+
+            if ( results[i].enabled !== false && (results[i].endDate == null || now < results[i].endDate) && now > results[i].beginDate && correctPage ) {
+                var key = self.toCamelCase(results[i].slug);
+                if ( typeof sortedTags[key] === 'undefined' ) {
+                    sortedTags[key] = [];
+                }
+                sortedTags[key].push(results[i]);
+            }
+        }
+    }
+
+    self.sortedTags = sortedTags;
+    callback();
+
+};
+VendorService.prototype.setValue = function(path,value,obj){
+    obj = obj || {};
+    path=path.split('.');
+    for (var i=0, len=path.length; i<len; i++){
+        obj[path[i]] = obj[path[i]] || {};
+        if(i===len-1){
+            obj[path[i]] = value;
+            break;
+        }else{
+            obj = obj[path[i]];
+        }
+
+    }
+
+    return obj;
+};
+VendorService.prototype.toCamelCase = function(myString){
+    return myString.replace(/-([a-z])/g, function (g) { return g[1].toUpperCase(); });
+};
+VendorService.prototype.toFloat = function(num, numDefault){
+    var parsedBase = parseFloat(num);
+    if(!isNaN(parsedBase) && typeof parsedBase === 'number') {
+        return parsedBase.toFixed(2);
+    } else {
+        return numDefault || 0.00;
+    }
+};
+/**
+ * Uniq
+ * @param array to uniq
+ * @returns uniq array
+ */
+VendorService.prototype.uniq = function(array){
+    return array.filter(
+        function (a) { return !this[a] ? this[a] = true : false; }, {}
+    );
+};
+
+VendorService.prototype.adroll = function(i, index){
+    var self = this;
+
+        var iframe = document.createElement('iframe');
+        iframe.style.cssText = 'width:1px; height:1px; display:none;';
+        iframe.frameborder = 0;
+        var html = '<script type="text/javascript">';
+        html += 'adroll_adv_id="' + i.advertisableId;
+        html += '";adroll_pix_id="' + i.adrollPixelId;
+        html += '";(function () {';
+        html += 'var oldonload = window.onload;';
+        html += 'window.onload = function () {';
+        html += '__adroll_loaded = true;';
+        html += 'var scr = document.createElement("script");';
+        html += 'var host = (("https:" == document.location.protocol) ? "https://s.adroll.com" : "http://a.adroll.com");';
+        html += 'scr.setAttribute(\'async\', \'true\');';
+        html += 'scr.type = "text/javascript";';
+        html += 'scr.src = host + "/j/roundtrip.js";';
+        html += '((document.getElementsByTagName(\'head\') || [null])[0] || document.getElementsByTagName(\'script\')[0].parentNode).appendChild(scr);';
+        html += 'if (oldonload) {oldonload()}';
+        html +=  '};}());</script>';
+
+        if(i.segmentName){
+            html += '<script type="text/javascript">';
+            html += 'adroll_segments = "' + i.segmentName +'"';
+            html += ';</script>';
+        }
+
+        if (self.getValue('transaction.transactionID',self.config.data)) {
+            html += '<script type="text/javascript">';
+            html += 'adroll_conversion_value =' + self.getValue('transaction.total.basePrice',self.config.data);
+            html += ';adroll_currency = "' + (self.getValue('transaction.total.currency') || 'USD');
+            html += '";</script>';
+        }
+
+        if (i.customVariables) {
+            var cust = {};
+            var u = i.customVariables;
+            for (var i in u) {
+                if (u.hasOwnProperty(i)) {
+                    cust[i] = self.getValue(u[i],self.config.data);
+                }
+            }
+
+            html += '<script type="text/javascript">';
+            html += 'adroll_custom_data = ';
+            html += JSON.stringify(cust);
+            html += '</script>';
+
+        }
+
+        document.body.appendChild(iframe);
+        var doc = (iframe.contentWindow || iframe.contentDocument);
+		if (doc.document)doc = doc.document;
+    	doc.open();
+        doc.write(html);
+        doc.close();
+
+
+};
+
+VendorService.prototype.bingV2 = function (tag, index) {
+    var self = this;
+
+        var iframe = document.createElement('iframe');
+        iframe.style.cssText = 'width:1px; height:1px; display:none;';
+        iframe.frameborder = 0;
+        iframe.id = tag.id;
+        var html = '<script type="text/javascript">';
+         html += '(function(w,d,t,r,u){var f,n,i;w[u]=w[u]||[] ,f=function(){var o={ti:"' + tag.tagId + '"}; o.q=w[u],w[u]=new UET(o),w[u].push("pageLoad")} ,n=d.createElement(t),n.src=r,n.async=1,n.onload=n .onreadystatechange=function() {var s=this.readyState;s &&s!=="loaded"&& s!=="complete"||(f(),n.onload=n. onreadystatechange=null)},i= d.getElementsByTagName(t)[0],i. parentNode.insertBefore(n,i)})(window,document,"script"," //bat.bing.com/bat.js","uetq"); ';
+        html += 'window.uetq = window.uetq || [];';
+
+        if (self.getValue('transaction.transactionID',self.config.data)) {
+            html += 'window.uetq.push("event", "", {"revenue_value": ' + self.getValue('transaction.total.basePrice') + ', "currency": "' + self.getValue('transaction.total.currency') + '"}); ';
+        }
+
+        html +=  '</script>';
+
+        document.body.appendChild(iframe);
+        var doc = (iframe.contentWindow || iframe.contentDocument);
+		if (doc.document)doc = doc.document;
+    	doc.open();
+        doc.write(html);
+        doc.close();
+};
+
+VendorService.prototype.bing = function (tag, index) {
+    var self = this;
+
+            var tagId = tag.tagId;
+
+            (function (w, d, t, r, u) {
+                var f, n, i;
+                w[u] = w[u] || [], f = function () {
+                    var o = {ti: tagId};
+                    o.q = w[u], w[u] = new UET(o), w[u].push("pageLoad")
+                }, n = d.createElement(t), n.src = r, n.async = 1, n.onload =
+                    n.onreadystatechange = function () {
+                        var s = this.readyState;
+                        s && s !== "loaded" && s !== "complete" || (f(), n.onload =
+                            n.onreadystatechange = null)
+                    }
+                    , i = d.getElementsByTagName(t)[0], i.parentNode.insertBefore(n, i)
+            })(window, document, "script", "//bat.bing.com/bat.js", "uetq");
+
+};
+VendorService.prototype.centro = function(tag, index) {
+	var self = this;
+
+    var src = self.getValue('transaction.transactionID') ? '//clickserv.pixel.ad/conv/' + tag.conversionId + '/' + self.getValue('transaction.total.basePrice')
+        : ('//centro.pixel.ad/iap/' + tag.conversionId);
+    self.createElem('img', src, tag.id);
+};
+
+VendorService.prototype.htmlSnippet = function (tag, index) {
+    var self = this;
+
+    var variableMap = {
+        '$artist_id$':         self.getValue('page.attributes.artistID'),
+        '$artist_name$':       self.getValue('page.attributes.artistName'),
+        '$brand$':             self.getValue('brand'),
+        '$cfc$':               self.getValue('cfc'),
+        '$client_id$':         self.getValue('page.attributes.clientID'),
+        '$document_referrer$': document.referrer,
+        '$document_href$':     document.location.href,
+        '$event_date$':        self.getValue('page.attributes.eventDate'),
+        '$event_id$':          self.getValue('page.attributes.eventID'),
+        '$event_name$':        self.getValue('page.attributes.eventName').replace(/\x27/g, '\\\x27'),
+        '$event_time$':        self.getValue('page.attributes.eventTime'),
+        '$language$':          self.getValue('page.pageInfo.language'),
+        '$inventory_type$':    ( parseInt(self.getValue('transaction.attributes.isResale') + 0) !== 0 ) ? 'resale' : 'primary',
+        '$major_category$':    self.getValue('page.category.primaryCategory'),
+        '$major_category_id$': self.getValue('page.category.primaryCategoryID'),
+        '$minor_category$':    self.getValue('page.category.subCategory1'),
+        '$minor_category_id$': self.getValue('page.category.subCategory1ID'),
+        '$mlb_product_string$':self.getValue('mlbProductString'),
+        '$face_value$':        self.getValue('transaction.total.basePrice'),
+        '$order_fees$':        self.getValue('transaction.total.feesTotal'),
+        '$order_id$':          self.getValue('transaction.transactionID'),
+        '$order_state$':       self.getValue('transaction.profile.address.stateProvince'),
+        '$order_country$':     self.getValue('transaction.profile.address.country'),
+        '$ticket_quantity$':   self.getValue('transaction.attributes.ticketQuantity'),
+        '$order_currency$':    self.getValue('transaction.total.currency'),
+        '$order_date$':        self.getValue('transaction.attributes.orderDate'),
+        '$order_time$':        self.getValue('transaction.attributes.orderTime'),
+        '$order_zip$':         self.getValue('transaction.profile.address.postalCode'),
+        '$page_name$':         self.getValue('page.pageInfo.pageName'),
+        '$random$':            Math.random() * 1000000000,
+        '$transaction_total$': self.getValue('transaction.total.transactionTotal'),
+        '$venue_country$':     self.getValue('page.attributes.country'),
+        '$venue_id$':          self.getValue('page.attributes.venueID'),
+        '$venue_name$':        self.getValue('page.attributes.venueName').replace(/\x27/g, '\\\x27'),
+        '$venue_zip$':         self.getValue('page.attributes.zip'),
+        '$event_time_zone$':   '',
+        '$product_data_json$': self.getValue('productDataJson')
+    };
+
+    var refScript = '<head><script>' +
+                    'Object.defineProperty(document, "referrer", { ' +
+                    'get : function() { ' +
+                    'return \'' + document.referrer + '\'; ' +
+                    '}' +
+                    '});' +
+                    '</script></head><body>${tag.html}</body>';
+
+    function escapeRegExp(str) {
+        return str.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|\']/g, '\\$&');
+    }
+
+    function cleanupString(str) {
+        if(str.replace) {
+            return str.replace(/[\[\]\$\']/g, '');
+        } else {
+            return str;
+        }
+    };
+
+    //replace all of the $...$ html strings with their actual values
+    var variablesToReplace = Object.keys(variableMap);
+    variablesToReplace.forEach(function (variableName, index) {
+        tag.html = tag.html.replace(new RegExp(escapeRegExp(variableName), 'gi'), typeof variableMap[variableName] !== 'undefined' ? cleanupString(variableMap[variableName]) : '');
+    });
+
+    var iframe           = document.createElement('iframe');
+    iframe.id            = tag.id;
+    iframe.style.cssText = 'width:1px; height:1px; display:none;';
+    iframe.frameborder   = 0;
+    document.body.appendChild(iframe);
+    var doc = (iframe.contentWindow || iframe.contentDocument);
+    if ( doc.document ) {
+        doc = doc.document;
+    }
+    doc.open();
+    doc.write(refScript.replace('${tag.html}', tag.html));
+    doc.close();
+
+};
+
+VendorService.prototype.custom = function(tag, index) {
+	var self = this;
+
+	var src;
+		if(tag.url.indexOf('http:') === -1) {
+			src = tag.url;
+			if ( typeof tag.customVariables !== 'undefined' ) {
+				if ( src.indexOf('?') > -1 )
+					src += '&';
+				else
+					src += '?';
+				var u = tag.customVariables;
+				for ( var j in u ) {
+					if ( u.hasOwnProperty(j) ) {
+						src += j + '=' + encodeURIComponent(self.getValue(u[ j ], self.config.data)) + '&';
+					}
+				}
+				//trim off the trailing ? or &
+				src = src.substring(0, src.length - 1);
+			}
+
+			if ( tag.tagType !== 'SCRIPT' ) {
+				//IMG or IFRAME
+				self.createElem(tag.tagType, src, tag.id);
+			} else {
+				var scrpt = document.createElement('script');
+				scrpt.src = src;
+				self.createElem('iframe', "", tag.id, function() {
+					var doc = this.contentWindow || this.contentDocument;
+					doc = doc.document || doc;
+					var head = doc.getElementsByTagName("head")[ 0 ];
+					head.appendChild(scrpt);
+				});
+			}
+		}
+
+};
+VendorService.prototype.doubleclickFloodlightCounter = function (tag, index) {
+    var self = this;
+
+    tag.floodlightId = tag.advertiserId;
+
+    //for every tag, load gtm and fire gtag config
+    var html = '<script async src="https://www.googletagmanager.com/gtag/js?id=DC-' + tag.floodlightId + '"></script>';
+    html += '<script>';
+    html += 'window.dataLayer = window.dataLayer || [];';
+    html += 'function gtag(){dataLayer.push(arguments);}';
+    html += 'gtag(\'js\', new Date());';
+    html += 'gtag(\'config\', \'DC-' + tag.floodlightId + '\');';
+
+    html += 'gtag(\'event\', \'conversion\', {\'send_to\': \'DC-' + tag.advertiserId + '/'
+        + tag.groupTagString + '/' + tag.activityTagString + '+' + tag.countingMethod.toString().toLowerCase() + '\'';
+    html += ', \'allow_custom_scripts\': \'' + 'false' + '\'';
+
+    if (typeof tag.customVariables !== 'undefined') {
+        var u = tag.customVariables;
+        for (var i in u) {
+            if (u.hasOwnProperty(i)) {
+                var value = self.getValue(u[i], self.config.data);
+                html += ', \'' + i + '\': \'' + value + '\'';
+            }
+        }
+    }
+    html += '});';
+    html += '</script>';
+
+    self.createIframeWithContent(tag.id, html, function () {
+        self.log('Iframe added for pixel: ' + tag.id);
+    });
+}
+
+VendorService.prototype.doubleclickFloodlightSales = function (tag, index) {
+    var self = this;
+
+    tag.floodlightId = tag.advertiserId;
+
+    //for every tag, load gtm and fire gtag config
+    var html = '<script async src="https://www.googletagmanager.com/gtag/js?id=DC-' + tag.floodlightId + '"></script>';
+    html += '<script>';
+    html += 'window.dataLayer = window.dataLayer || [];';
+    html += 'function gtag(){dataLayer.push(arguments);}';
+    html += 'gtag(\'js\', new Date());';
+    html += 'gtag(\'config\', \'DC-' + tag.floodlightId + '\');';
+
+    html += 'gtag(\'event\', \'purchase\', {\'send_to\': \'DC-' + tag.advertiserId + '/'
+        + tag.groupTagString + '/' + tag.activityTagString + '+' + tag.countingMethod.toString().toLowerCase() + '\'';
+    html += ', \'allow_custom_scripts\': \'' + 'false' + '\'';
+
+    if ( self.getValue('transaction.transactionID', self.config.data) ) {
+        html += ', \'value\':' + self.toFloat(self.getValue('transaction.total.basePrice') , 0);
+        html += ', \'quantity\':';
+        html += self.getValue('transaction.attributes.ticketQuantity', self.config.data);
+        html += ', \'currency\': \'' + self.getValue('transaction.total.currency') + '\'';
+        html += ', \'transaction_id\': \'' + self.getValue('transaction.transactionID') + '\'';
+    }
+    if (typeof tag.customVariables !== 'undefined') {
+        var u = tag.customVariables;
+        for (var i in u) {
+            if (u.hasOwnProperty(i)) {
+                var value = self.getValue(u[i], self.config.data);
+                html += ', \'' + i + '\': \'' + value + '\'';
+            }
+        }
+    }
+    html += '});';
+    html += '</script>';
+
+    self.createIframeWithContent(tag.id, html, function () {
+        self.log('Iframe added for pixel: ' + tag.id);
+    });
+};
+
+VendorService.prototype.doubleclickGtagEvent = function (tag, index) {
+    var self = this;
+
+    tag.floodlightId = tag.sendTo.split('/')[0];
+
+    //for every tag, load gtm and fire gtag config
+    var html = '<script async src="https://www.googletagmanager.com/gtag/js?id=' + tag.floodlightId + '"></script>';
+    html += '<script>';
+    html += 'window.dataLayer = window.dataLayer || [];';
+    html += 'function gtag(){dataLayer.push(arguments);}';
+    html += 'gtag(\'js\', new Date());';
+    html += 'gtag(\'config\', \'' + tag.floodlightId + '\');';
+    
+    if (tag.sendTo.indexOf('transactions') !== -1 || tag.sendTo.indexOf('items_sold') !== -1) {
+        html += 'gtag(\'event\', \'purchase\', {\'send_to\': \'' + tag.sendTo + '\'';
+    } else {
+        html += 'gtag(\'event\', \'conversion\', {\'send_to\': \'' + tag.sendTo + '\'';
+    }
+    html += ', \'allow_custom_scripts\': \'' + 'false' + '\'';
+    
+    if ( (tag.sendTo.indexOf('transactions') !== -1 || tag.sendTo.indexOf('items_sold') !== -1)
+        && self.getValue('transaction.transactionID', self.config.data)) {
+            html += ', \'value\':' + self.toFloat(self.getValue('transaction.total.basePrice') , 0);
+            html += ', \'quantity\':';
+            html += tag.sendTo.indexOf('transactions') !== -1 ? 1 : self.getValue('transaction.attributes.ticketQuantity', self.config.data);
+            html += ', \'currency\': \'' + self.getValue('transaction.total.currency') + '\'';
+            html += ', \'transaction_id\': \'' + self.getValue('transaction.transactionID') + '\'';
+    }
+    if (typeof tag.customVariables !== 'undefined') {
+        var u = tag.customVariables;
+        for (var i in u) {
+            if (u.hasOwnProperty(i)) {
+                var value = self.getValue(u[i], self.config.data);
+                html += ', \'' + i + '\': \'' + value + '\'';
+            }
+        }
+    }
+    html += '});';
+    html += '</script>';
+
+    self.createIframeWithContent(tag.id, html, function () {
+        self.log('Iframe added for pixel: ' + tag.id);
+    });
+};
+
+VendorService.prototype.doubleclickPublishersConversion = function (i, index) {
+	var self = this;
+
+	var img = document.createElement('img');
+	img.src = 'https://pubads.g.doubleclick.net/activity;xsp=' + i.publisherId;
+
+
+	if (self.getValue('transaction.transactionID',self.config.data)) {
+		img.src += ';ord=' + self.getValue('transaction.transactionID',self.config.data);
+		img.src += ';cost=' + self.getValue('transaction.total.basePrice',self.config.data);
+		if (i.countingMethod === 'TRANSACTIONS') {
+			img.src += ';qty=' + 1;
+		} else {
+			img.src += ';qty=' + self.getValue('transaction.attributes.ticketQuantity',self.config.data);
+		}
+	} else {
+		var axel = Math.random() + "";
+		var a = axel * 10000000000000;
+		img.src += ';ord=' + a;
+	}
+
+	img.src += '?';
+
+	img.width = 1;
+	img.height = 1;
+	img.border = 0;
+
+	document.body.appendChild(img);
+
+};
+VendorService.prototype.facebookAudience = function (tag, index) {
+    var self = this;
+
+//****** Facebook Audience ******//
+    var html = '<script type="text/javascript">';
+    html+= '(function () {';
+    html+= '    var _fbq = window._fbq || (window._fbq = []);';
+    html+= '    if ( !_fbq.loaded ) {';
+    html+= '        var fbds   = document.createElement(\'script\');';
+    html+= '        fbds.async = true;';
+    html+= '        fbds.src   = \'//connect.facebook.net/en_US/fbds.js\';';
+    html+= '        var s      = document.getElementsByTagName(\'script\')[0];';
+    html+= '        s.parentNode.insertBefore(fbds, s);';
+    html+= '        _fbq.loaded = true;';
+    html+= '    }';
+    html+= '    window._fbq.push([\'addPixelId\', tag.pixelId]);';
+    html+= '})();';
+
+    html+= 'window._fbq = window._fbq || [];';
+    html+= 'window._fbq.push([\'track\', \'PixelInitialized\', {}]);';
+
+    if ( self.getValue('transaction.transactionID') ) {
+        html+= 'window._fbq.push([\'track\', \'Purchase\', {';
+        html+= '    currency: \'' + self.getValue('transaction.total.currency') + '\',';
+        html+= '    value:    \'' + self.getValue('transaction.total.basePrice') + '\'';
+        html+= '}]);';
+    }
+    else {
+    html+= 'window._fbq.push([\'track\', \'ViewContent\']);';
+    }
+    html += '</script>';
+
+    self.createIframeWithContent(tag.id, html, function () {
+        self.log('Iframe added for pixel: ' + tag.id);
+    });
+
+//****** End Facebook Audience ******//
+
+};
+VendorService.prototype.facebookConversion = function (tag, index) {
+    var self = this;
+
+//****** Facebook Conversion ******//
+    var html = '<script type="text/javascript">';
+    html+= '(function () {';
+    html+= '    var _fbq = window._fbq || (window._fbq = []);';
+    html+= '    if ( !_fbq.loaded ) {';
+    html+= '        var fbds   = document.createElement(\'script\');';
+    html+= '        fbds.async = true;';
+    html+= '        fbds.src   = \'//connect.facebook.net/en_US/fbds.js\';';
+    html+= '        var s      = document.getElementsByTagName(\'script\')[0];';
+    html+= '        s.parentNode.insertBefore(fbds, s);';
+    html+= '        _fbq.loaded = true;';
+    html+= '    }';
+    html+= '})();';
+    html+= '(function () {';
+    html+= '    window._fbq = window._fbq || [];';
+    html+= '        window._fbq.push([\'track\', \'' + tag.pixelId + '\', {';
+    html+= '    currency: \'' + self.getValue('transaction.total.currency') + '\',';
+    html+= '    value:    \'' + self.getValue('transaction.total.basePrice') + '\'';
+    html+= '        }]);';
+    html+= '})();';
+    html += '</script>';
+
+    self.createIframeWithContent(tag.id, html, function () {
+        self.log('Iframe added for pixel: ' + tag.id);
+    });
+
+//****** End Facebook Conversion ******//
+};
+
+VendorService.prototype.facebook = function (tag, index) {
+    var self = this;
+
+    //load the library in the iFrame
+    var html = '<script type="text/javascript">';
+    html += '!function(f, b, e, v, n, t, s) {';
+    html += 'if ( f.fbq ) return;';
+    html += 'n = f.fbq = function() {';
+    html += 'n.callMethod ?';
+    html += 'n.callMethod.apply(n, arguments) : n.queue.push(arguments)';
+    html += '};';
+    html += 'if ( !f._fbq )';
+    html += 'f._fbq = n;';
+    html += 'n.push = n;';
+    html += 'n.loaded = !0;';
+    html += 'n.version = \'2.0\';';
+    html += 'n.agent = \'PLTICKETMASTER\';';
+    html += 'n.queue = [];';
+    html += 't = b.createElement(e);';
+    html += 't.async = !0;';
+    html += 't.src = v;';
+    html += 's = b.getElementsByTagName(e)[ 0 ];s.parentNode.insertBefore(t, s)';
+    html += '}(window,';
+    html += 'document, \'script\', \'//connect.facebook.net/en_US/fbevents.js\');';
+
+    //track init and pageView
+    html += 'fbq(\'set\', \'autoConfig\', false, \'' + tag.pixelId + '\');';
+    html += 'fbq(\'init\', \'' + tag.pixelId + '\');';
+    html += 'fbq(\'track\', \'PageView\');';
+
+    html += '</script>';
+
+    html += '<script type="text/javascript">';
+
+    if ( self.getValue('transaction.transactionID', self.config.data) ) {
+        var inventoryType = ( parseInt(self.getValue('transaction.attributes.isResale') + 0) !== 0 ) ? 'resale' : 'primary';
+
+        html += 'fbq(\'track\', \'Purchase\',';
+        html += '{';
+        html += 'value: ' + self.toFloat(self.getValue('transaction.total.basePrice') , 0) + ',';
+        html += 'currency: \'' + self.getValue('transaction.total.currency') + '\'';
+        html += ',inventory_type: \'' + inventoryType + '\',';
+    } else {
+        html += 'fbq(\'track\', \'ViewContent\',';
+        html += '{';
+    }
+
+        html += 'hostname: window.parent.location.hostname,';
+        html += 'page_name: \'' + self.getValue('page.pageInfo.pageName') + '\',';
+        html += 'event_name: \'' + self.addSlashes(self.getValue('page.attributes.eventName').replace(/\x27/g, '\\\x27')) + '\',';
+        html += 'event_id: \'' + self.getValue('page.attributes.eventID') + '\',';
+        html += 'event_cat_major: \'' + self.addSlashes(self.getValue('page.category.primaryCategory')) + '\',';
+        html += 'event_cat_minor: \'' + self.addSlashes(self.getValue('page.category.subCategory1')) + '\',';
+
+        /* start - added for AS-2229 (Facebook parameters for DPA) */
+        html += 'content_ids: \'' + self.getValue('page.attributes.eventID') + '\',';
+        html += 'content_type: \'product\',';
+        /* end - added for AS-2229 (Facebook parameters for DPA) */
+
+        html += 'channel: \'' + (self.getValue('accountManager') == true ? 'Account Manager' : 'Ticketmaster') + '\',';
+
+        html += 'artist_name: \'' + self.addSlashes(self.getValue('page.attributes.artistName')) + '\',';
+        html += 'artist_id: \'' + self.getValue('page.attributes.artistID') + '\',';
+        html += 'venue_name: \'' + self.addSlashes(self.getValue('page.attributes.venueName').replace(/\x27/g, '\\\x27')) + '\',';
+        html += 'venue_id: \'' + self.getValue('page.attributes.venueID') + '\'';
+
+        html += '}';
+        html += ');';
+
+    html += '</script>';
+
+    self.createIframeWithContent(tag.id, html, function () {
+        self.log('Iframe added for pixel: ' + tag.id);
+    });
+
+};
+VendorService.prototype.googleAdwordsConversion = function (tag, index) {
+	var self = this;
+	var pixel = JSON.parse(JSON.stringify(tag));
+
+	var next = function () {
+
+		var params = {};
+		params.google_conversion_id = pixel.conversionId;
+		params.google_conversion_label = typeof pixel.conversionLabel !== 'undefined' ? pixel.conversionLabel : '';
+		params.google_remarketing_only = false;
+		params.google_conversion_value = self.getValue('transaction.total.basePrice');
+		params.google_conversion_currency = self.getValue('transaction.total.currency') || 'USD';
+		google_trackConversion(params);
+	};
+
+
+	if (typeof window.google_trackConversion === 'undefined') {
+		self.getScript(location.protocol + "//www.googleadservices.com/pagead/conversion_async.js", null, null,
+			function () {
+				next();
+			});
+
+	} else {
+		next();
+	}
+
+};
+VendorService.prototype.googleAdwordsGtagEvent = function (tag, index) {
+    var self = this;
+
+    //check for a sendTo parameter
+    if(tag.sendTo) {
+        tag.conversionId = tag.sendTo.split('/')[0];
+        tag.conversionLabel = tag.sendTo.split('/')[1];
+    }
+
+    //for every tag, load gtm and fire gtag config
+    var html = '<script async src="https://www.googletagmanager.com/gtag/js?id=' + tag.conversionId + '"></script>';
+    html += '<script>';
+    html += 'window.dataLayer = window.dataLayer || [];';
+    html += 'function gtag(){dataLayer.push(arguments);}';
+    html += 'gtag(\'js\', new Date());';
+    html += 'gtag(\'config\', \'' + tag.conversionId + '\');';
+    
+    //for tags with a conversion label, fire a conversion event (these would be the "event tags" (vs. global site tags))
+    if(tag.conversionLabel) {
+
+        if (self.getValue('transaction.transactionID', self.config.data)) {
+            html += 'gtag(\'event\', \'purchase\', {\'send_to\': \'' + tag.conversionId + '/' + tag.conversionLabel + '\'';
+        } else {
+            html += 'gtag(\'event\', \'conversion\', {\'send_to\': \'' + tag.conversionId + '/' + tag.conversionLabel + '\'';
+        }
+
+        if(self.getValue('transaction.transactionID', self.config.data)) {
+            html += ', \'value\':' + self.toFloat(self.getValue('transaction.total.basePrice') , 0);
+            html += ', \'currency\': \'' + self.getValue('transaction.total.currency') + '\'';
+            html += ', \'transaction_id\': \'' + self.getValue('transaction.transactionID') + '\'';
+        }
+        
+        html += '});';
+
+    }
+    
+    html += '</script>';
+
+    self.createIframeWithContent(tag.id, html, function () {
+        self.log('Iframe added for pixel: ' + tag.id);
+    });
+
+};
+VendorService.prototype.googleAdwordsGtagGlobal = function (tag, index) {
+    var self = this;
+
+    //for every tag, load gtm and fire gtag config
+    var html = '<script async src="https://www.googletagmanager.com/gtag/js?id=' + tag.adWordsId + '"></script>';
+    html += '<script>';
+    html += 'window.dataLayer = window.dataLayer || [];';
+    html += 'function gtag(){dataLayer.push(arguments);}';
+    html += 'gtag(\'js\', new Date());';
+    html += 'gtag(\'config\', \'' + tag.adWordsId + '\');';
+    html += '</script>';
+
+    self.createIframeWithContent(tag.id, html, function () {
+        self.log('Iframe added for pixel: ' + tag.id);
+    });
+
+};
+VendorService.prototype.googleAdwordsRemarketing = function (tag, index) {
+    var self = this;
+
+    //****** Adwords Conversion ******//
+    var pixel = JSON.parse(JSON.stringify(tag));
+
+    var next = function (arr) {
+        var params = {};
+        params.google_conversion_id = pixel.conversionId;
+        params.google_conversion_label = typeof pixel.conversionLabel !== 'undefined' ? pixel.conversionLabel : '';
+        params.google_remarketing_only = true;
+        params.google_conversion_value = self.getValue('transaction.total.basePrice');
+        google_trackConversion(params);
+    };
+
+    if (typeof window.google_trackConversion === 'undefined') {
+
+        self.getScript(location.protocol + '//www.googleadservices.com/pagead/conversion_async.js', null, null,
+            function () {
+                next();
+            });
+
+    } else {
+        next();
+    }
+    //****** End Adwords Retargeting ******//
+};
+//****** Google Analytics ******//
+// This legacy tag runs analytics.js in the top DOM of the page, it should be sequestered in an IFRAME as of 2019 InfoSec practices
+// However GA3 will be sunset by Google on July 1, 2023 so this is left as-is to be deprecated while maintaining consistency
+// Input :
+//	* tag 	: the object deserialized from the json pixel TM1 marketing has generated
+//	* index : index of the current tag in the page. Part of the general vendor interface that is called in src/lib/prototypes/processPixels.js L14
+
+function loadGoogleAnalyticsLibrary() {
+	// this _should_ be loaded on all pages by way of TM Analytics Platform, but just in case
+	var windowObject = window, domDocument = document, scriptTag = 'script', gaEndpointUrl = '//www.google-analytics.com/analytics.js', libKey = 'ga';
+	windowObject['GoogleAnalyticsObject'] = libKey;
+	windowObject[libKey] = windowObject[libKey] || function () {
+		(windowObject[libKey].q = windowObject[libKey].q || []).push(arguments)
+	}, windowObject[libKey].l = 1 * new Date();
+
+	var scriptElement = domDocument.createElement(scriptTag), firstScriptTagInDom = domDocument.getElementsByTagName(scriptTag)[0];
+	scriptElement.async = 1;
+	scriptElement.src = gaEndpointUrl;
+	firstScriptTagInDom.parentNode.insertBefore(scriptElement, firstScriptTagInDom);
+}
+
+// Helper: Build Product actionFieldObject for ecommerce to this named tracker
+// Named tracker documentation : https://support.google.com/tagmanager/answer/2574372#TrackerName
+const htmlSingleQuote = '\\\x27';
+var buildAndSendEcommerceEvents = function (gaVendorService, trackerName, tag) {
+	var require = trackerName + ".require";
+	var ecom = trackerName + ".ec";
+	ga(require, 'ec');
+
+	// First, get all the generic Product stuff with values we know are present in fanbuilder
+	var productInfo = {
+		id: gaVendorService.getValue('page.attributes.eventID'),
+		name: gaVendorService.getValue('googleAnalytics.productInfo.name') || gaVendorService.getValue('page.attributes.eventName').replace(/\x27/g, htmlSingleQuote),
+		category: gaVendorService.getValue('googleAnalytics.productInfo.category') || gaVendorService.getValue('page.category.primaryCategory') || gaVendorService.getValue('page.attributes.eventType') || "",
+		brand: gaVendorService.getValue('accountManager') ? 'Account Manager' : 'Ticketmaster'
+	};
+
+	// Second, Add Product custom dimensions (can't tell if it is hit/session/product scoped so add to both, GA will ignore invalid scopes)
+	if (typeof tag.customVariables !== 'undefined') {
+		for (var key in tag.customVariables) {
+			productInfo[key] = gaVendorService.getValue(tag.customVariables[key]);
+		}
+	}
+
+	// Third, add ec Products Actions to the hit, if its a confirmation page, add products and purchase action
+	// Official documentation :
+	// 	* https://developers.google.com/analytics/devguides/collection/analyticsjs/ecommerce
+	//	* https://developers.google.com/analytics/devguides/collection/analyticsjs/enhanced-ecommerce
+	// A good step by step guide : https://www.optimizesmart.com/implementing-enhanced-ecommerce-tracking-universal-analytics/
+	if(gaVendorService.getValue('transaction.transactionID')){
+		// Augment productInfo above with processedItems that expand transaction data for cat/variant/etc
+		// 	 "processedItems" is a construct in Google Tag Manager that handles platform fixes/issues
+		var processedItemsLength = gaVendorService.getValue('googleAnalytics.productInfo.processedItems').length || 1;
+		for(var i=0; i<processedItemsLength; i++){
+			// Here we take that info and apply "safe" backups in case it is missing for critical transaction attributes
+			var processedItemsDefined = gaVendorService.getValue('googleAnalytics.productInfo.processedItems') && gaVendorService.getValue('googleAnalytics.productInfo.processedItems')[i];
+			productInfo.id = processedItemsDefined ? gaVendorService.getValue('googleAnalytics.productInfo.processedItems')[i].gaId : gaVendorService.getValue('page.attributes.eventID');
+			productInfo.name = processedItemsDefined ? gaVendorService.getValue('googleAnalytics.productInfo.processedItems')[i].gaName : ( gaVendorService.getValue('googleAnalytics.productInfo.name') || gaVendorService.getValue('page.attributes.eventName').replace(/\x27/g, htmlSingleQuote) || "" );
+			productInfo.category = processedItemsDefined ? gaVendorService.getValue('googleAnalytics.productInfo.processedItems')[i].gaCategory : ( gaVendorService.getValue('page.category.primaryCategory') || gaVendorService.getValue('page.attributes.eventType') || "" );
+			productInfo.variant = processedItemsDefined ? gaVendorService.getValue('googleAnalytics.productInfo.processedItems')[i].gaVariant : ( gaVendorService.getValue('googleAnalytics.productInfo.variant') || "" );
+			productInfo.quantity = processedItemsDefined ? gaVendorService.getValue('googleAnalytics.productInfo.processedItems')[i].quantity : gaVendorService.getValue('transaction.attributes.ticketQuantity');
+			productInfo.price = processedItemsDefined ? gaVendorService.getValue('googleAnalytics.productInfo.processedItems')[i].price.basePrice : ( gaVendorService.getValue('transaction.total.basePrice')/gaVendorService.getValue('transaction.attributes.ticketQuantity') );
+			productInfo.brand = gaVendorService.getValue('accountManager') ? 'Account Manager' : gaVendorService.getValue('googleAnalytics.productInfo.confirmationBrand');
+			ga(ecom + ':addProduct', productInfo);
+		}
+		//then, call a single purchase event with totals included (sent with pageview below to named tracker object)
+		ga(ecom + ':setAction', 'purchase', {
+			id: gaVendorService.getValue('transaction.transactionID'),
+			affiliation: 'Ticketmaster',
+			revenue: gaVendorService.getValue('transaction.total.basePrice'),
+			currency: gaVendorService.getValue('transaction.total.currency')
+		});
+	} else if ( gaVendorService.getValue('page.attributes.eventID') ){ //if you are on an EDP and have event info, Add a Product Impression
+		ga(ecom + ':addProduct', productInfo );
+		ga(ecom + ':setAction', 'detail');
+	}
+};
+
+VendorService.prototype.googleAnalyticsV2 = function (tag, index) {
+    var self = this;
+
+	if( !window.ga ) {
+		loadGoogleAnalyticsLibrary();
+	}
+
+	// Prepare tracker object and send page hit
+	if (typeof tag.trackingId !== "undefined") {
+		var trackerName = 'tracker' + tag.id;
+		ga('create', tag.trackingId, 'auto', {'name': trackerName, 'allowLinker': true});
+		// Add Hit/Session Custom Dimensions (separate function for jest tests, could be done here as with products)
+		self.addGA2CustomDimensions(ga, trackerName, tag.customVariables);
+		buildAndSendEcommerceEvents(self, trackerName, tag);
+		ga(trackerName + '.send', 'pageview');
+	}
+};
+
+VendorService.prototype.googleAnalyticsV4 = function (tag, index) {
+    /*
+     This vendor uses some unusual adaptations to manage GA4 data integrity
+      1 - Rename both the dataLayer and gtag object to prevent client tags from "hearing"
+            other pushes.  Shouldn't happen in the IFRAME but gtag has shown it can do this
+            when similar approach used in GTM
+                https://developers.google.com/tag-platform/devguides/dataLayer#rename_the_data_layer
+                https://developers.google.com/analytics/devguides/collection/gtagjs/renaming-the-gtag-object
+      2 - Hard disable to the tracker with setTimeout() as normally it will continue to try to listen for
+            Enhanced Measurement events which we cannot control but clients can set in their config.
+                https://support.google.com/analytics/answer/9216061
+      3 - Use the new token from GTM override productDataJson, an enhanced and formatted JSON object for GA/CCV vendors
+    */
+    var self = this;
+
+    if (isTrackingIdValid(tag)) {
+        var html = self.generateGA4HtmlScriptTag(tag);
+
+        self.createIframeWithContent(tag.id, html, function () {
+            self.log('Iframe added for pixel: ' + tag.id);
+        });
+    } else {
+        self.log('Invalid GA4 ID: ' + tag.trackingId);
+    }
+};
+
+var isTrackingIdValid =  function(tag) {
+    var gaTrackingIdPrefix = 'G-';
+    return !!tag.trackingId && tag.trackingId.indexOf(gaTrackingIdPrefix) !== -1;
+}
+
+VendorService.prototype.googleAnalytics = function (tag, index) {
+    var self = this;
+
+//****** Google Analytics ******//
+
+        (function (i, s, o, g, r, a, m) {
+            i['GoogleAnalyticsObject'] = r;
+            i[r] = i[r] || function () {
+                    (i[r].q = i[r].q || []).push(arguments)
+                }, i[r].l = 1 * new Date();
+            a = s.createElement(o),
+                m = s.getElementsByTagName(o)[0];
+            a.async = 1;
+            a.src = g;
+            m.parentNode.insertBefore(a, m)
+        })(window, document, 'script', '//www.google-analytics.com/analytics.js', 'ga');
+
+        var collectProductInfo = function (){
+        	var productInfo = {
+        	    'id': self.getValue('page.attributes.eventID'),
+        	    'name': self.getValue('page.attributes.eventName').replace(/\x27/g, '\\\x27') + ' on ' + self.getValue('page.attributes.eventDate') + ' at ' + self.getValue('page.attributes.venueName').replace(/\x27/g, '\\\x27'),
+        	    'category': self.getValue('page.category.primaryCategory') || self.getValue('page.attributes.eventType')
+        	};
+
+        	if(self.getValue('transaction.transactionID')){
+        		productInfo.variant = self.getValue('transaction.attributes.isResale') ? 'Resale' : 'Primary';
+        	    productInfo.quantity = self.getValue('transaction.attributes.ticketQuantity');
+        	    productInfo.price = self.getValue('transaction.total.basePrice')/self.getValue('transaction.attributes.ticketQuantity');
+        	}
+        	
+        	return productInfo;
+        };
+        
+        var ecommerce = function (acct) {
+            
+	        var require = acct + ".require";
+	        var ecom = acct + ".ec";
+	        ga(require, 'ec');
+                
+	        //if its a confirmation page, add products and purchase action
+	        if(self.getValue('transaction.transactionID')){
+	        	ga(ecom + ':addProduct', collectProductInfo());
+	        	ga(ecom + ':setAction', 'purchase', {
+	        		  'id': self.getValue('transaction.transactionID'),
+	        		  'affiliation': 'Ticketmaster',
+	        		  'revenue': self.getValue('transaction.total.basePrice')
+	        	});
+	        }
+	        //if you are on an EDP and have event info, count an impression
+	        else if (self.getValue('page.attributes.eventID')){
+	        	ga(ecom + ':addImpression', collectProductInfo());
+	        }
+        };
+
+       
+            if (typeof tag.trackingId !== "undefined") {
+                var name = 'tracker' + tag.id;
+                ga('create', tag.trackingId, 'auto', {'name': name, 'allowLinker': true});
+                ecommerce(name);
+                ga(name + '.send', 'pageview');
+            }
+
+    
+//****** End Google Analytics ******//
+};
+VendorService.prototype.lotame = function (tag, index) {
+    var self = this;
+
+            var img = document.createElement('img');
+            img.src = 'https://bcp.crwdcntrl.net/5/c=' + tag.clientId;
+            img.src += '/b=' + tag.behaviorId;
+            img.width = 1;
+            img.height = 1;
+
+            document.body.appendChild(img);
+
+};
+VendorService.prototype.marketo = function (tag, index) {
+    var self = this;
+
+        var iframe = document.createElement('iframe');
+        iframe.style.cssText = 'width:1px; height:1px; display:none;';
+        iframe.frameborder = 0;
+        iframe.id = tag.id;
+        var html = '<script type="text/javascript" src="//munchkin.marketo.net/munchkin.js"></script>';
+
+        html += '<script type="text/javascript">';
+        html += 'Munchkin.init("' + tag.munchkinId + '");';
+        html += 'Munchkin.munchkinFunction("visitWebPage", { url: "' + self.getValue('page.pageInfo.pageName') + '" } );';
+        html += '</script>';
+
+        document.body.appendChild(iframe);
+        var doc = (iframe.contentWindow || iframe.contentDocument);
+		if (doc.document)doc = doc.document;
+    	doc.open();
+        doc.write(html);
+        doc.close();
+
+        
+};
+VendorService.prototype.mediamath = function (tag, index) {
+    var self = this;
+
+            var img = document.createElement('img');
+            img.src = '//pixel.mathtag.com/event/img?mt_id=' + tag.pixelId;
+            img.src += '&mt_adid=' + tag.advertiserId;
+            img.style.display = 'none';
+            img.width = 1;
+            img.height = 1;
+
+            if (typeof tag.customVariables !== 'undefined') {
+                var u = tag.customVariables;
+                for (var i in u) {
+                    if (u.hasOwnProperty(i)) {
+                        img.src += '&' + i + '=' + self.getValue(u[i]);
+                    }
+                }
+            }
+            document.body.appendChild(img);
+
+};
+
+VendorService.prototype.oracleBluekai = function (tag, index) {
+    var self = this;
+
+    //load the library in the iFrame
+    var html = '<script>';
+    html+= 'window.bk_async = function() {';
+    html+= 'bk_addPageCtx(\'' + tag.phintKey + '\', \'' + tag.phintValue + '\');';
+    html+= 'BKTAG.doTag(' + tag.siteId + ', 1);';
+    html+= '};';
+
+    html+= '(function() {';
+    html+= 'var scripts = document.getElementsByTagName(\'script\')[0];';
+    html+= 'var s = document.createElement(\'script\');';
+    html+= 's.async = true;';
+    html+= 's.src = "https://tags.bkrtx.com/js/bk-coretag.js";';
+    html+= 'scripts.parentNode.insertBefore(s, scripts);';
+    html+= '}());';
+    html+= '</script>';
+
+    self.createIframeWithContent(tag.id, html, function () {
+        self.log('Iframe added for pixel: ' + tag.id);
+    });
+}
+
+
+VendorService.prototype.oracleEloqua = function(tag, index) {
+  var self = this;
+  var src = '//s' + tag.siteId + '.t.eloqua.com/visitor/v200/svrGP?pps=3&siteid=' + tag.siteId;
+  self.createElem('img', src, tag.id);
+
+};
+VendorService.prototype.pinterest = function (tag, index) {
+    var self = this;
+
+    //load the library in the iFrame
+    var html = '<script>';
+    html += '!function(e){if(!window.pintrk){window.pintrk = function () {';
+    html += 'window.pintrk.queue.push(Array.prototype.slice.call(arguments))};';
+    html += 'var n=window.pintrk;n.queue=[],n.version="3.0";';
+    html += 'var t=document.createElement("script");t.async=!0,t.src=e;';
+    html += 'var r=document.getElementsByTagName("script")[0];';
+    html += 'r.parentNode.insertBefore(t,r)}}';
+    html += '("https://s.pinimg.com/ct/core.js");';
+
+    html += 'pintrk(\'load\', \'' + tag.conversionTagId + '\');';
+    html += 'pintrk(\'page\');';
+
+    if ( self.getValue('transaction.transactionID', self.config.data) ) {
+        html += 'pintrk(\'track\', \'checkout\', {';
+        html += 'value: ' + self.toFloat(self.getValue('transaction.total.basePrice') , 0) + ',';
+        html += 'order_quantity: ' + self.getValue('transaction.attributes.ticketQuantity', self.config.data) + ',';
+        html += 'currency: \'' + self.getValue('transaction.total.currency') + '\',';
+        html += 'line_items: [{';
+        html += 'product_name: \'' + self.getValue('page.attributes.eventName') + '\',';
+        html += 'product_id: \'' + self.getValue('page.attributes.eventID') + '\',';
+        html += 'product_category: \'' + self.getValue('page.attributes.artistID') + '\'';
+        html += '}]';
+        html += '});';
+    }
+
+    html+= '</script>';
+
+    self.createIframeWithContent(tag.id, html, function () {
+        self.log('Iframe added for pixel: ' + tag.id);
+    });
+}
+
+VendorService.prototype.quantcast = function (tag, index) {
+    var self = this;
+
+    window._qevents = window._qevents || [];
+
+    (function () {
+        var elem   = document.createElement('script');
+        elem.src   =
+            (document.location.protocol === 'https:' ? 'https://secure' : 'http://edge')
+            + '.quantserve.com/quant.js';
+        elem.async = true;
+        elem.type  = 'text/javascript';
+        var scpt   = document.getElementsByTagName('script')[0];
+        scpt.parentNode.insertBefore(elem, scpt);
+    })();
+
+    var cust = [];
+    if ( typeof tag.customLabels !== 'undefined' ) {
+        var u = tag.customLabels;
+        for ( var i in u ) {
+            if ( u.hasOwnProperty(i) ) {
+                if ( u[i] === 'CUSTOM_SEGMENT' ) {
+                    cust.push('_fp.channel.' + i);
+                }
+                else if ( u[i] === 'VARIABLE' ) {
+                    cust.push('_fp.channel.' + self.getValue(i));
+                }
+            }
+        }
+    }
+    cust.push('_fp.event.' + self.getValue('page.pageInfo.pageName'));
+    cust.push('_fp.pcat.' + self.getValue('page.attributes.eventName').replace(/\x27/g, '\\\x27'));
+    var labelString = cust.join(', ');
+    if ( self.getValue('transaction.transactionID') ) {
+        _qevents.push({
+                          qacct:   tag.pcode,
+                          labels:  labelString,
+                          orderid: self.getValue('transaction.transactionID'),
+                          revenue: self.getValue('transaction.total.basePrice').toString()
+                      });
+    }
+    else {
+        _qevents.push({
+                          qacct:  tag.pcode,
+                          labels: labelString
+                      });
+    }
+
+};
+VendorService.prototype.rocketfuel = function (tag, index) {
+    var self = this;
+
+//<!-- Begin Rocket Fuel Conversion Action Tracking Code Version 9 -->
+        (function () {
+            var w = window, d = document;
+            var s = d.createElement('script');
+            s.setAttribute('async', 'true');
+            s.setAttribute('type', 'text/javascript');
+            s.setAttribute('src', '//c1.rfihub.net/js/tc.min.js');
+            var f = d.getElementsByTagName('script')[0];
+            f.parentNode.insertBefore(s, f);
+            if (typeof w['_rfi'] !== 'function') {
+                w['_rfi'] = function () {
+                    w['_rfi'].commands = w['_rfi'].commands || [];
+                    w['_rfi'].commands.push(arguments);
+                };
+            }
+                _rfi('setArgs', 'ver', '9');
+                _rfi('setArgs', 'rb', tag.accountId);
+                _rfi('setArgs', 'ca', tag.conversionId);
+                _rfi('track');
+        })();
+
+};
+VendorService.prototype.rubiconConversion = function (tag, index) {
+    var self = this;
+
+    if ( self.getValue('transaction.transactionID') ) {
+        var src = '//as.chango.com/conv/i?' + tag.conversionId + '&cost=' + self.getValue('transaction.total.basePrice') + '&order_id=' + self.getValue('transaction.transactionID') + '&quantity=' + self.getValue('transaction.attributes.ticketQuantity');
+        self.createElem('img', src, tag.id);
+    }
+};
+
+VendorService.prototype.rubiconRetargeting = function (tag, index) {
+    var self = this;
+
+    var src = '//cc.chango.com/c/o?pid=' + tag.segmentId;
+    self.createElem('img', src, tag.id);
+
+};
+VendorService.prototype.sitescout = function (tag, index) {
+    var self = this;
+    var src  = self.getValue('transaction.transactionID') ? '//clickserv.sitescout.com/conv/' + tag.conversionId + '/' + self.getValue('transaction.total.basePrice') : ('//pixel.sitescout.com/iap/' + tag.conversionId);
+
+    self.createElem('img', src, tag.id);
+
+};
+VendorService.prototype.sizmekV2 = function (tag, index) {
+    var self = this;
+
+    //****** Start Sizmek ******//
+    var rnd = Math.random() * 1000000;
+
+    var ep = document.location.protocol + '//bs.serving-sys.com/BurstingPipe/ActivityServer.bs?ifrm=1&cn=as&rnd=' + rnd + '&';
+
+    var standardParams = [
+        ['ProductID', self.getValue('page.attributes.eventID')],
+        ['ProductInfo', self.getValue('page.attributes.eventName').replace(/\x27/g, '\\\x27')]
+    ];
+
+    var enhancedParams = [
+        ['ArtistID', self.getValue('page.attributes.artistID')],
+        ['ArtistName', self.getValue('page.attributes.artistName')],
+        ['Country', self.getValue('page.attributes.country')],
+        ['EventDate', self.getValue('page.attributes.eventDate')],
+        ['EventState', self.getValue('page.attributes.state')],
+        ['EventTime', self.getValue('page.attributes.eventTime')],
+        ['EventZip', self.getValue('page.attributes.zip')],
+        ['MajorcatID', self.getValue('page.category.primaryCategoryID')],
+        ['MinorcatID', self.getValue('page.category.subCategory1ID')],
+        ['PageName', self.getValue('page.pageInfo.pageName')],
+        ['VenueID', self.getValue('page.attributes.venueID')],
+        ['VenueName', self.getValue('page.attributes.venueName').replace(/\x27/g, '\\\x27')],
+        ['VenueZip', self.getValue('page.attributes.zip')]
+    ];
+
+    if ( self.getValue('transaction.transactionID') ) {
+
+        var value = parseFloat(self.getValue('transaction.total.basePrice')).toFixed(2);
+        standardParams.push(['OrderID', self.getValue('transaction.transactionID')]);
+        standardParams.push(['Value', value]);
+        standardParams.push(['Quantity', self.getValue('transaction.attributes.ticketQuantity')]);
+
+        var inventoryType = ( parseInt(self.getValue('transaction.attributes.isResale') + 0) !== 0 ) ? 'resale' : 'primary';
+        enhancedParams.push(['InventoryType', inventoryType]);
+        enhancedParams.push(['PurchaseDate', self.getValue('transaction.attributes.orderDate')]);
+        enhancedParams.push(['PurchaseTime', self.getValue('transaction.attributes.orderTime')]);
+
+    }
+
+    var prefixedParams = [],
+        activityId     = typeof tag.activityId !== 'undefined' ? tag.activityId : '00000';
+
+    var prefix = '';
+    if ( typeof tag.prefix !== 'undefined' ) {
+        prefix = tag.prefix;
+    }
+
+    //all tags get the standard params
+    for ( var j = 0; j < standardParams.length; j++ ) {
+        var param = standardParams[j];
+        prefixedParams.push([prefix + param[0], param[1]]);
+    }
+
+    //add extra variables for enhanced tags
+    if ( tag.enhancedData && tag.enhancedData === true ) {
+        for ( var k = 0; k < enhancedParams.length; k++ ) {
+            var param = enhancedParams[k];
+            prefixedParams.push([prefix + param[0], param[1]]);
+        }
+    }
+
+    (function (ep, p, d) {
+
+        var sizmekFrame           = d.createElement('iframe');
+        sizmekFrame.style.cssText = 'width:1px; height:1px; display:none;';
+        var url                   = ep + 'ActivityID=' + activityId + '&';
+        p.forEach(function (item, index) {
+            url += item[0] + '=' + encodeURIComponent(item[1]) + '&';
+        });
+        sizmekFrame.src         = url;
+        sizmekFrame.width       = 0;
+        sizmekFrame.height      = 0;
+        sizmekFrame.frameborder = 0;
+        sizmekFrame.hspace      = 0;
+        sizmekFrame.vspace      = 0;
+        sizmekFrame.scrolling   = 'no';
+        sizmekFrame.title       = 'Advertisement Content';
+        sizmekFrame.bordercolor = '#000000';
+
+        document.body.appendChild(sizmekFrame);
+
+    })(ep, prefixedParams, document);
+	
+};
+VendorService.prototype.sizmek = function (tag, index) {
+    var self = this;
+
+//****** Start Sizmek ******//
+    var rnd = Math.random() * 1000000;
+
+    var ep     = document.location.protocol
+                 + '//bs.serving-sys.com/BurstingPipe/ActivityServer.bs?ifrm=1&cn=as&rnd=' + rnd + '&',
+        params = [
+            ['ArtistID', self.getValue('page.attributes.artistID')],
+            ['VenueID', self.getValue('page.attributes.venueID')],
+            ['MinorcatID', self.getValue('page.category.subCategory1ID')],
+            ['MajorcatID', self.getValue('page.category.primaryCategoryID')],
+            ['EventID', self.getValue('page.attributes.eventID')],
+            ['EventName', self.getValue('page.attributes.eventName').replace(/\x27/g, '\\\x27')],
+            ['VenueZip', self.getValue('page.attributes.zip')],
+            ['DmaID', self.getValue('DMA ID')],
+            ['EventTime', self.getValue('page.attributes.eventTime')],
+            ['EventState', self.getValue('page.attributes.state')],
+            ['EventZip', self.getValue('page.attributes.zip')],
+            ['EventDate', self.getValue('page.attributes.eventDate')],
+            ['Country', self.getValue('page.attributes.country')],
+            ['EventTimeZone', ''],
+            ['Promoter', self.getValue('page.pageInfo.promoterID')],
+            ['ProductID', self.getValue('page.attributes.eventID')],
+            ['ProductInfo', self.getValue('page.attributes.eventName').replace(/\x27/g, '\\\x27')]
+        ];
+
+    if ( self.getValue('transaction.transactionID') ) {
+
+        var value = parseFloat(self.getValue('transaction.total.basePrice')).toFixed(2);
+
+        params.push(['PurchaseTime', self.getValue('transaction.attributes.orderTime')]);
+        params.push(['PurchaseDay', '']);
+        params.push(['PurchaseDate', self.getValue('transaction.attributes.orderDate')]);
+        params.push(['ConfCode',
+                     self.getValue('transaction.transactionID')]);
+        params.push(['OrderID',
+                     self.getValue('transaction.transactionID')]);
+        params.push(['FValue', value]);
+        params.push(['Value', value]);
+        params.push(['TixP', self.getValue('transaction.attributes.ticketQuantity')]);
+        params.push(['Quantity', self.getValue('transaction.attributes.ticketQuantity')]);
+        //todo:fix this for everyone
+        if ( window.tm_omn && window.tm_omn.eVar33 ) {
+            params.push(['TicketType', window.tm_omn.eVar33]);
+        } else {
+            params.push(['TicketType', self.getValue('transaction.attributes.ticketType')]);
+
+        }
+
+        if ( /\/resale\/checkout\/order/.test(document.location.pathname) ) {
+            params.push(['Page', 'checkout_resale']);
+            params.push(['PageName', self.getValue('page.pageInfo.pageName')]);
+        } else {
+            params.push(['PageName', 'confirmation']);
+        }
+    } else {
+        params.push(['PageName', self.getValue('page.pageInfo.pageName')]);
+    }
+    var i = 0;
+
+    var prefixedParams = [],
+        activityId     = typeof tag.activityId !== 'undefined' ? tag.activityId : '00000';
+    if ( typeof tag.prefix !== 'undefined' ) {
+        for ( var j = 0; j < params.length; j++ ) {
+            param = params[j];
+            prefixedParams.push([tag.prefix + param[0], param[1]]);
+        }
+    }
+
+    if ( typeof tag.type.name !== 'undefined' && tag.type.name.indexOf(':Retargeting')
+                                                    !== -1 ) {
+        var url = 'https://bs.serving-sys.com/Serving?CN=ntt&TID=' + activityId
+                  + '&TVAL=z&rnd=' + ebRand;
+        self.ajax(url);
+
+    } else {
+
+        (function (ep, p, d) {
+
+            var sizmekFrame           = d.createElement('iframe');
+            sizmekFrame.style.cssText = 'width:1px; height:1px; display:none;';
+            var url                   = ep + 'ActivityID=' + activityId + '&';
+            p.forEach(function (item, index) {
+                url += item[0] + '=' + encodeURIComponent(item[1]) + '&';
+            });
+            sizmekFrame.src         = url;
+            sizmekFrame.width       = 0;
+            sizmekFrame.height      = 0;
+            sizmekFrame.frameborder = 0;
+            sizmekFrame.hspace      = 0;
+            sizmekFrame.vspace      = 0;
+            sizmekFrame.scrolling   = 'no';
+            sizmekFrame.title       = 'Advertisement Content';
+            sizmekFrame.bordercolor = '#000000';
+
+            document.body.appendChild(sizmekFrame);
+
+        })(ep, prefixedParams.length > 0 ? prefixedParams : params, document);
+    }
+
+//****** End Sizmek ******//
+};
+VendorService.prototype.snap = function (tag, index) {
+    var self = this;
+
+    //load the library in the iFrame
+    var html = '<script>';
+    html += '(function(win, doc, sdk_url){' +
+        'if(win.snaptr) return;' +
+        'var tr=win.snaptr=function(){' +
+        'tr.handleRequest? tr.handleRequest.apply(tr, arguments):tr.queue.push(arguments);' +
+        '};' +
+        'tr.queue = [];v' +
+        'ar s=\'script\';' +
+        'var new_script_section=doc.createElement(s);' +
+        'new_script_section.async=!0;' +
+        'new_script_section.src=sdk_url;' +
+        'var insert_pos=doc.getElementsByTagName(s)[0];' +
+        'insert_pos.parentNode.insertBefore(new_script_section, insert_pos);})' +
+        '(window, document, \'https://sc-static.net/scevent.min.js\');';
+    html += 'snaptr(\'init\',\'' + tag.pixelId + '\');';
+    html += 'snaptr(\'track\',\'PAGE_VIEW\');';
+
+    if ( self.getValue('transaction.transactionID', self.config.data) ) {
+        html += 'snaptr(\'track\',\'PURCHASE\',  {';
+        html += '\'currency\':\'' + self.getValue('transaction.total.currency') + '\',';
+        html += '\'price\':' + self.toFloat(self.getValue('transaction.total.basePrice') , 0) + ',';
+        html += '\'number_items\':\'' + self.getValue('transaction.attributes.ticketQuantity', self.config.data) + '\',';
+        html += '\'transaction_id\':\'' + self.getValue('transaction.transactionID', self.config.data) + '\'';
+        html += '});';
+    }
+
+    html+= '</script>';
+
+    self.createIframeWithContent(tag.id, html, function () {
+        self.log('Iframe added for pixel: ' + tag.id);
+    });
+}
+
+VendorService.prototype.sportsDesk = function (tag, index) {
+    var self = this;
+
+    var img = document.createElement('script');
+    img.src = '//secfld.vmmpxl.com/?bkt=' + tag.pixelId;
+
+    if ( typeof tag.customVariables !== 'undefined' ) {
+        var u = tag.customVariables;
+        for ( var i in u ) {
+            if ( u.hasOwnProperty(i) ) {
+                img.src += '&' + i + '=' + self.getValue(u[i]);
+            }
+        }
+    }
+    document.body.appendChild(img);
+};
+
+VendorService.prototype.theTradeDeskUniversal = function (tag, index) {
+    var self = this;
+
+    //load the library in the iFrame
+    var html = '<script src="https://js.adsrvr.org/up_loader.1.1.0.js"></script>';
+    html += '<script>';
+    html += 'var dynParam = {};';
+
+    if ( self.getValue('transaction.transactionID', self.config.data) ) {
+        html += 'dynParam.orderid = \'' + self.getValue('transaction.transactionID', self.config.data) + '\';';
+        html += 'dynParam.v = \'' + self.toFloat(self.getValue('transaction.total.basePrice') , 0) + '\';';
+        html += 'dynParam.vf = \'' + self.getValue('transaction.total.currency') + '\';';
+    }
+
+    if (typeof tag.customVariables !== 'undefined') {
+        var u = tag.customVariables;
+        for (var i in u) {
+            if (u.hasOwnProperty(i)) {
+                html += 'dynParam.' + i + ' = \'' + self.getValue(u[i], self.config.data) + '\';';
+            }
+        }
+    }
+
+    html += 'ttd_dom_ready( function() {';
+    html += 'if (typeof TTDUniversalPixelApi === \'function\') {';
+    html += 'var universalPixelApi = new TTDUniversalPixelApi();';
+    html += 'universalPixelApi.init("' + tag.advertiserId + '", ["' + tag.tagId + '"], "https://insight.adsrvr.org/track/up", dynParam);';
+    html += '}';
+    html += '});';
+
+    html+= '</script>';
+
+    self.createIframeWithContent(tag.id, html, function () {
+        self.log('Iframe added for pixel: ' + tag.id);
+    });
+}
+
+VendorService.prototype.theTradeDesk = function(tag, index) {
+	var self = this;
+
+		var src = '//insight.adsrvr.org/track/evnt/?adv=' + tag.advertiserId + '&ct=' + tag.contentId + '&fmt=3';
+
+		if ( self.getValue('transaction.transactionID') ) {
+			src = '//insight.adsrvr.org/track/conv/?adv=' + tag.advertiserId + '&ct=' + tag.contentId + '&fmt=3';
+			src = src + '&v=' + self.getValue('transaction.total.basePrice') + '&vf=' + self.getValue('transaction.total.currency') + '&orderid=' + self.getValue('transaction.transactionID');
+		}
+
+		if ( typeof tag.customVariables !== 'undefined' ) {
+			var u = tag.customVariables;
+			for ( var j in u ) {
+				if ( u.hasOwnProperty(j) ) {
+					src += '&' + j + '=' + self.getValue(u[ j ], self.config.data);
+				}
+			}
+		}
+
+		self.createElem('img', src, tag.id);
+};
+VendorService.prototype.tiktok = function (tag, index) {
+    var self = this;
+
+    if (isPixelIdValid(tag)) {
+        var html = self.generateTiktokHtmlScriptTag(tag);
+        self.createIframeWithContent(tag.id, html, function () {
+            self.log('Iframe added for pixel: ' + tag.id);
+        });
+    } else {
+        self.log('Invalid TikTok ID: ' + tag.pixelId);
+    }
+};
+
+var isPixelIdValid =  function(tag) {
+    return !!tag.pixelId;
+}
+
+VendorService.prototype.twitterUniversal = function (tag, index) {
+    var self = this;
+    
+    !function (e, t, n, s, u, a) {
+        e.twq || (s = e.twq = function () {
+            s.exe ? s.exe.apply(s, arguments) : s.queue.push(arguments);
+        }, s.version = '1.1', s.queue = [], u = t.createElement(n), u.async = !0, u.src = '//static.ads-twitter.com/uwt.js',
+            a = t.getElementsByTagName(n)[0], a.parentNode.insertBefore(u, a))
+    }(window, document, 'script');
+
+
+    twq('init', tag.pid);
+
+    if ( self.getValue('transaction.transactionID') ) {
+        twq('track', 'Purchase',
+            //Note, all values sent as strings in single quotes)
+            {
+                value:        self.getValue('transaction.total.basePrice').toString(),
+                currency:     self.getValue('transaction.total.currency'),
+                order_id:     self.getValue('transaction.transactionID'),
+                content_type: 'tickets',
+                content_ids:  [self.getValue('page.attributes.eventID')],
+                content_name: self.getValue('page.attributes.eventName').replace(/\x27/g, '\\\x27'),
+                num_items:    self.getValue('transaction.attributes.ticketQuantity').toString()
+            }
+        );
+    } else {
+        twq('track', 'PageView');
+    }
+};
+VendorService.prototype.twitter = function (tag, index) {
+    var self = this;
+//****** Twitter ******//
+    (function (w, d, t, u, f, c) {
+        if(f){
+            c();
+            return;
+        }
+        var x = false,
+        p, s = d.createElement('script');
+        s.type = 'text/javascript';
+        s.src = u;
+        s.async = 1;
+        s.onload = s.onreadystatechange = function () {
+            if (!x && (!this.readyState || this.readyState === 'complete')) {
+                x = true;
+                self.twitterLoaded = true;
+                c();
+            }
+        };
+        p = d.getElementsByTagName(t)[0];
+        p.parentNode.insertBefore(s, p);
+    })(window, document, 'script', '//platform.twitter.com/oct.js', self.twitterLoaded, function () {
+        var conversion = {};
+        if (self.getValue('transaction.transactionID')) {
+            conversion.tw_sale_amount = self.getValue('transaction.total.basePrice');
+            conversion.tw_order_quantity =
+                self.getValue('transaction.attributes.ticketQuantity');
+        }
+        window.twttr.conversion.trackPid(tag.pid, conversion);
+
+    });
+
+//****** End Twitter ******//
+};
+VendorService.prototype.verizonMediaOauth = function (tag, index) {
+    var self = this;
+
+    //load the library in the iFrame
+    var html = '<script>';
+    html += '(function(w,d,t,r,u){w[u]=w[u]||[];w[u].push(\n' +
+        '{projectId:"' + tag.projectId + '",properties:{pixelId:"' + tag.pixelId + '"}});\n' +
+        'var s=d.createElement(t);s.src=r;s.async=true;s.onload=\n' +
+        's.onreadystatechange=function(){var y,rs=this.readyState,c=w[u];\n' +
+        'if(rs&&rs!="complete"&&rs!="loaded"){return}try{y=YAHOO.ywa.I13N.fireBeacon;\n' +
+        'w[u]=[];w[u].push=function(p){y([p])};y(c)}catch(e){}};\n' +
+        'var scr=d.getElementsByTagName(t)[0],par=scr.parentNode;par.insertBefore(s,scr)})(window,document,"script","https://s.yimg.com/wi/ytc.js","dotq"); ';
+
+    if ( self.getValue('transaction.transactionID', self.config.data) ) {
+        html += 'window.dotq = window.dotq || [];window.dotq.push({ \'gv\': ' + self.toFloat(self.getValue('transaction.total.basePrice') , 0) + ' });';
+    }
+
+    html+= '</script>';
+
+    self.createIframeWithContent(tag.id, html, function () {
+        self.log('Iframe added for pixel: ' + tag.id);
+    });
+}
+
+
+},{"./TmPixel":2}]},{},[1])(1)
+});
+
+//# sourceMappingURL=fanbuilder.js.map
